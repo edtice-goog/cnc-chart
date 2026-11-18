@@ -1,0 +1,145 @@
+{{- if .Values.cim.cimtools.enabled -}}
+{{- $_ :=  set . "serviceName" "cim-tools" }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "cnc.fullname" . }}-cim-tools
+  namespace: {{ .Release.Namespace }}
+spec:
+  clusterIP: None
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "cnc.fullname" . }}-cim-tools
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: 0
+  serviceName: {{ include "cnc.fullname" . }}-cim-tools
+  selector:
+    matchLabels:
+      {{- include "service.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/cim-tools-config: {{ include (print $.Template.BasePath "/cim-tools-config.yaml") . | sha256sum }}
+        {{- $_ :=  set . "serviceName" "cim-tools" }}
+      labels:
+        {{- include "service.selectorLabels" . | nindent 8 }}
+    spec:
+      automountServiceAccountToken: {{ .Values.cim.cimtools.automountServiceAccountToken }}
+      {{- include "cnc.securityContext.pod" . }}
+      {{- if or .Values.imagePullSecret .Values.global.imagePullSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.imagePullSecret | default .Values.global.imagePullSecret }}
+      {{- end }}
+      {{- with .Values.cim.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.cim.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.cim.tolerations | default .Values.tolerations | default .Values.global.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: cim-tools-sleep
+          image: {{ printf "%s/%s:%s%s" (required "A valid image registry entry is required." (.Values.cim.cimtools.registry | default .Values.imageRegistry | default .Values.global.imageRegistry )) (required "A valid image name (.Values.cim.cimtools.image) entry is required." .Values.cim.cimtools.image) (.Values.cim.cimtools.version | default .Values.imageVersion | default .Values.global.imageVersion) (.Values.imageTagSuffix| default .Values.global.imageTagSuffix) | quote }}
+          imagePullPolicy: {{ .Values.imagePullPolicy | default .Values.global.imagePullPolicy }}
+          {{- include "cnc.securityContext.container" (dict "containerName" "cimtools" "Values" .Values.cim "Capabilities" .Capabilities) | indent 10 }}
+          command: ["/bin/sleep", "infinity"]
+          env:
+            # Set serviceName as cim to add db related envs
+            {{- $_ :=  set . "serviceName" "cim" }}
+            {{- include "cnc.postgres.environment" . | indent 12 }}
+            - name: PGURL
+              value: jdbc:postgresql://$(POSTGRES_HOST):$(POSTGRES_PORT)/$(POSTGRES_DATABASE)?sslmode={{ (index .Values .serviceName).postgres.sslmode | default .Values.global.postgres.sslmode }}&sslfactory=org.postgresql.ssl.DefaultJavaSSLFactory
+            # Revert serviceName to cim-tools
+            {{- $_ :=  set . "serviceName" "cim-tools" }}
+            - name: PROPERTIES_PATH
+              value: "/coverity/config/cim.properties"
+            - name: PGHOST
+              value: $(POSTGRES_HOST)
+            - name: PGPORT
+              value: $(POSTGRES_PORT)
+            - name: PGUSER
+              value: $(POSTGRES_USERNAME)
+            - name: PGPASSWORD
+              value: $(POSTGRES_PASSWORD)
+            - name: PGDATABASE
+              value: $(POSTGRES_DATABASE)
+            - name: TRUST_STORE_PATH
+              value: "/coverity/config/trust-stores/trust-store.jks"
+          volumeMounts:
+            - name: {{ include "cnc.fullname" . }}-cim-tools-properties
+              mountPath: /coverity/config/cim.properties
+              subPath: cim.properties
+          {{ if .Values.cim.cimtools.volume.enabled }}
+            - name: {{ include "cnc.fullname" . }}-cim-tools-data
+              mountPath: {{ .Values.cim.cimtools.volume.mountPath }}
+          {{ end }}
+            {{ if (index .Values.global "trust-stores").enabled }}
+            - name: importtruststorecerts
+              mountPath: /coverity/truststorecerts
+            {{ end }}
+            - name: workdir
+              mountPath: /workdir
+            - name: trust-stores
+              mountPath: /coverity/config/trust-stores
+            {{- if .Values.extraVolumeMounts }}
+            {{- toYaml .Values.extraVolumeMounts | nindent 12 }}
+            {{- end }}
+            {{- if .Values.global.extraVolumeMounts }}
+            {{- toYaml .Values.global.extraVolumeMounts | nindent 12 }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.cim.cimtools.resources | nindent 12 }}
+      {{- if or .Values.cim.cimtools.initContainers .Values.global.postgres.jobSidecars }}
+      initContainers:
+      {{- if .Values.cim.cimtools.initContainers }}
+      {{- include "common.tplvalues.render" ( dict "value" .Values.cim.cimtools.initContainers "context" $ ) | nindent 8 }}
+      {{- end }}
+      {{- if include "isKubeVersionValid" . }}
+      {{- if .Values.global.postgres.jobSidecars }}
+      {{- include "common.tplvalues.render" ( dict "value" .Values.global.postgres.jobSidecars "context" $ ) | nindent 8 }}
+      {{- end }}
+      {{- end }}
+      {{- end }}
+      volumes:
+        - name: {{ include "cnc.fullname" . }}-cim-tools-properties
+          secret:
+            secretName: {{ include "cnc.fullname" . }}-cim-tools-secret
+        {{ if (index .Values.global "trust-stores").enabled }}
+        - name: importtruststorecerts
+          configMap:
+            name: {{ required "A valid trust-stores configmap name must be provided." ((index .Values.global "trust-stores").configmapName) }}
+        {{ end }}
+        - name: workdir
+          emptyDir: {}
+        - name: trust-stores
+          emptyDir: {}
+      {{- if .Values.cim.cimtools.extraVolumes }}
+      {{- toYaml .Values.cim.cimtools.extraVolumes | nindent 8 }}
+      {{- end }}
+      {{- if .Values.extraVolumes }}
+      {{- toYaml .Values.extraVolumes | nindent 8 }}
+      {{- end }}
+      {{- if .Values.global.extraVolumes }}
+      {{- toYaml .Values.global.extraVolumes | nindent 8 }}
+      {{- end }}
+{{ if .Values.cim.cimtools.volume.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: {{ include "cnc.fullname" . }}-cim-tools-data
+      spec:
+        accessModes:
+          - {{ .Values.cim.cimtools.volume.accessMode }}
+        storageClassName: {{ required "A valid storage class name entry is required." .Values.cim.cimtools.volume.storageClass }}
+        resources:
+          requests:
+            storage: {{ .Values.cim.cimtools.volume.storage }}
+{{ end }}
+{{ end }}

@@ -1,0 +1,244 @@
+# Helm values for AI Triage Suggestion Service Plug-in - Standalone Mode
+# This configuration is for deploying the standalone all-in-one binary
+# Suitable for edge deployments, development, and testing environments
+
+# Explicitly disable API and Worker deployments (standalone mode only)
+deployment: null
+workerDeployment: null
+
+# These globals are used in all charts unless overridden for a specific resource
+global:
+  imagePullPolicy: IfNotPresent
+  environmentName: standalone
+  annotations: {}
+  environment: {}
+  envVarsFromSecret: {}
+  envVarsFromConfigMap: {}
+  envPodFields: {}
+  resources:
+    limits:
+      cpu: "2"
+      memory: "2Gi"
+    requests:
+      cpu: "500m"
+      memory: "1Gi"
+
+# Disable polaris common environment for standalone
+polaris:
+  commonEnvironment:
+    enabled: false
+  cloudsql:
+    enabled: false
+
+# Service for standalone deployment
+# Using ClusterIP since GCLB (Google Cloud Load Balancer) will be used via Ingress
+services:
+- name: triage-suggestion-service-standalone
+  type: ClusterIP
+  specs:
+  - name: "http"
+    port: 8080
+    protocol: "TCP"
+    targetPort: 8080
+  - name: "metrics"
+    port: 9090
+    protocol: "TCP"
+    targetPort: 9090
+
+# Enable volumes and volumemounts for persistent storage
+volumes:
+  enabled: true
+  pvc:
+    enabled: true
+    workdirs:
+      storageClass: "standard-rwo"
+      size: "10Gi"
+      accessModes:
+        - ReadWriteOnce
+    artifacts:
+      storageClass: "standard-rwo"
+      size: "20Gi"
+      accessModes:
+        - ReadWriteOnce
+  secrets:
+    # Auth secrets mounted as files so they don't appear in env vars (/proc/<pid>/environ)
+    - name: triage-suggestion-service-secrets
+      mountPath: /etc/triage-suggestion-service/secrets
+      items:
+        - key: jwt-secret
+          path: jwt-secret
+        - key: jwt-encryption-key
+          path: jwt-encryption-key
+        - key: auth-key
+          path: auth-key
+        - key: auth-hmac-secret
+          path: auth-hmac-secret
+    # Example: Mount TLS certificates (uncomment and configure as needed)
+    # - name: triage-suggestion-service-tls     # Kubernetes secret containing TLS cert/key
+    #   mountPath: /etc/tls
+    #   items:
+    #     - key: tls.crt
+    #       path: server.crt
+    #     - key: tls.key
+    #       path: server.key
+    # - name: triage-suggestion-service-ca      # Optional: Custom CA certificate
+    #   mountPath: /etc/tls/ca
+    #   items:
+    #     - key: ca.crt
+    #       path: ca.crt
+  configMaps: []
+
+# Artifact storage - local filesystem for standalone mode
+artifactStorage:
+  storageType: "local"
+  storagePath: "./artifacts"
+  maxSize: "104857600"  # 100MB
+  uploadUrlExpiration: "1h"
+  s3: { bucket: "", region: "", secret: { name: "" }, serviceAccount: "" }
+  gcs: { bucket: "", secret: { key: "", name: "" } }
+  azure: { container: "", storageAccountName: "", secret: { name: "" } }
+  minio: { bucket: "", region: "", endpoint: "", secure: false, pathStyle: true, secret: { name: "" } }
+
+# imagePullSecrets
+imagePullSecrets: null
+
+# Standalone deployment configuration
+standaloneDeployment:
+  imageRegistry: ""  # Inherits from global.imageRegistry when empty
+  image: "triage-suggestion-service-standalone"
+  version: "v0.0.1"
+  strategy: RollingUpdate
+  replicaCount: 1
+  serviceAccount: triage-suggestion-service-standalone
+  annotations: {}
+
+  # Network Policy configuration
+  networkPolicy:
+    enabled: true         # Enable NetworkPolicy for egress control
+    allowHTTP: false      # Allow HTTP egress (port 80) - set to true if needed
+    customEgressRules: [] # Add custom egress rules if needed
+
+  envPodFields: {}
+  environment:
+    # Service configuration
+    APP_NAME: "triage-suggestion-service-standalone"
+    SERVICE_NAME: "triage-suggestion-service"
+    SERVICE_MODE: "standalone"
+    STORAGE_TYPE: "memory"
+    QUEUE_TYPE: "memory"
+    HTTP_PORT: "8080"
+    METRICS_PORT: "9090"
+    # BASE_URL: ""                                # Optional: Public base URL (e.g., https://triage.example.com). If empty, auto-generates as http(s)://localhost:port
+
+    # TLS/HTTPS configuration (optional)
+    # TLS_ENABLED: "false"                        # Enable HTTPS (default: false)
+    # TLS_CERT_FILE: "/etc/tls/server.crt"        # Path to TLS certificate file (PEM format)
+    # TLS_KEY_FILE: "/etc/tls/server.key"         # Path to TLS private key file (PEM format)
+
+    # Worker configuration
+    WORKER_COUNT: "3"
+    QUEUE_BUFFER_SIZE: "100"
+
+    # CLI configuration (cov-triage binary in Docker image)
+    CLI_PATH: "/opt/cov-triage-issue/bin/cov-triage-issue"
+    CLI_TIMEOUT: "15m"
+    CLI_IDLE_TIMEOUT: "120s"  # 2 minutes; cancel CLI only if silent, not just slow
+    MAX_CONCURRENT_CLI: "10"
+    # WORK_DIRS: "./workdirs"                 # Optional: defaults to ./workdirs
+    # RESULTS_DIR: ""                         # Optional: defaults to workdirs/$scanId/results/
+    CLEANUP_WORK_DIRS: "false"                # Keep data for testing/debugging
+
+    # LLM configuration (LLM_URL, LLM_NAME injected by llmEnvVars helper from .Values.llm)
+    # LLM API keys are provided per-request via POST /auth (no global key).
+
+    # Storage configuration
+    ARTIFACT_STORAGE_TYPE: "local"
+    CLEANUP_INTERVAL: "10m"
+    REQUEST_RETENTION: "2h"
+    RESULTS_RETENTION: "30m"
+    ARTIFACT_RETENTION: "30m"
+    # ARTIFACT_STORAGE_PATH: "./artifacts"    # Optional: defaults to ./artifacts
+
+    # Upload URL configuration
+    UPLOAD_URL_EXPIRATION: "1h"
+    ARTIFACT_MAX_SIZE: "104857600"            # 100MB
+
+    # Logging
+    LOG_LEVEL: "debug"
+    LOG_FORMAT: "json"
+
+    # Telemetry
+    TELEMETRY_ENABLED: "true"
+    TELEMETRY_FILE_PATH: "/var/log/triage-suggestion-service/telemetry.jsonl"
+    TELEMETRY_MAX_SIZE: "104857600"           # 100MB
+
+    # Auth secrets loaded from mounted files (see volumes.secrets) to avoid env var exposure
+    JWT_SECRET_FILE: /etc/triage-suggestion-service/secrets/jwt-secret
+    JWT_ENCRYPTION_KEY_FILE: /etc/triage-suggestion-service/secrets/jwt-encryption-key
+    AUTH_KEY_FILE: /etc/triage-suggestion-service/secrets/auth-key
+    AUTH_HMAC_SECRET_FILE: /etc/triage-suggestion-service/secrets/auth-hmac-secret
+  envVarsFromSecret: {}
+  envVarsFromConfigMap: {}
+  resources:
+    limits:
+      cpu: 1
+      memory: "1Gi"
+    requests:
+      cpu: "100m"   # Reduced from 500m to allow scheduling on smaller nodes
+      memory: "256Mi"  # Reduced from 1Gi to allow scheduling on smaller nodes
+  livenessProbe:
+    httpGet:
+      path: /liveness
+      port: 8080
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readinessProbe:
+    httpGet:
+      path: /readiness
+      port: 8080
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
+
+# service accounts
+serviceAccounts:
+- name: triage-suggestion-service-standalone
+
+# enable security context to run deployment as nonroot user
+securityContext:
+  enabled: true
+
+
+# Disable postgres for standalone (uses in-memory storage)
+postgres:
+  enabled: false
+
+# HPA disabled for standalone (typically single instance)
+hpa:
+  enabled: false
+
+# Worker HPA not applicable for standalone
+workerHpa:
+  enabled: false
+
+# Vault disabled for standalone (uses secrets)
+vault:
+  enabled: false
+  keystore: false
+  db_enabled: false
+
+# LLM configuration (API keys provided per-request via POST /auth)
+llm:
+  url: "https://llm.labs.blackduck.com"
+  name: "gpt-4"
+
+# RabbitMQ not needed for standalone mode (uses in-memory queue)
+rabbitmq:
+  enabled: false
+
+externalRabbitmq:
+  host: ""
+  port: 5672

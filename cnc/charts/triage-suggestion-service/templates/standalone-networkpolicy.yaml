@@ -1,0 +1,53 @@
+{{- if .Values.standaloneDeployment }}
+{{- if .Values.standaloneDeployment.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "triage-suggestion-service.fullname" . }}-standalone-egress
+  labels:
+    {{- include "triage-suggestion-service.labels" . | nindent 4 }}
+    app.kubernetes.io/component: standalone
+spec:
+  # Apply this policy to standalone deployment pods
+  podSelector:
+    matchLabels:
+      {{- include "triage-suggestion-service.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: standalone
+
+  policyTypes:
+  - Egress
+
+  egress:
+  # Rule 1: Allow DNS resolution (required for domain name lookup)
+  - to:
+    - namespaceSelector: {}  # Allow DNS to any namespace (kube-system typically)
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+
+  # Rule 2: Allow HTTPS egress to LLM endpoint (llm.labs.blackduck.com)
+  # Note: This allows HTTPS to any destination since we can't filter by domain in NetworkPolicy
+  # For more restrictive control, you would need to specify the IP address of llm.labs.blackduck.com
+  - to:
+    - namespaceSelector: {}
+    ports:
+    - protocol: TCP
+      port: 443
+
+  {{- if .Values.standaloneDeployment.networkPolicy.allowHTTP }}
+  # Rule 3: Allow HTTP egress (if enabled)
+  - to:
+    - namespaceSelector: {}
+    ports:
+    - protocol: TCP
+      port: 80
+  {{- end }}
+
+  {{- if .Values.standaloneDeployment.networkPolicy.customEgressRules }}
+  # Custom egress rules from values
+  {{- toYaml .Values.standaloneDeployment.networkPolicy.customEgressRules | nindent 2 }}
+  {{- end }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,81 @@
+{{- $fullName := include "cnc.fullname" . -}}
+{{- $pgpoolEnabled := and .Values.cim.pgpool.enabled (gt (int .Values.cim.pgpool.replicas) 0) }}
+{{- $csIsDeployed := and (gt (int .Values.cim.cimweb.replicas) 1) (gt (int (index .Values.cim "commit-server").replicas) 0) .Values.cim.cimweb.enabled }}
+{{- if and .Values.cim.gateway.enabled (eq (include "cnc.gateway.isGKE" .) "true") (or $csIsDeployed $pgpoolEnabled) -}}
+{{- $hc := .Values.cim.gateway.healthCheck | default dict -}}
+{{- $requestPath := $hc.commitServerRequestPath | default "/login/login.htm" -}}
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: {{ $fullName }}-commit-server-healthcheck
+  namespace: {{ .Release.Namespace }}
+spec:
+  targetRef:
+    group: ""
+    kind: Service
+    name: {{ $fullName }}-commit-server
+  default:
+    checkIntervalSec: 15
+    timeoutSec: 10
+    healthyThreshold: 1
+    unhealthyThreshold: 2
+    logConfig:
+      enabled: false
+    config:
+      type: HTTP
+      httpHealthCheck:
+        requestPath: {{ $requestPath | quote }}
+        port: 8080
+{{- end }}
+---
+{{- if and .Values.cim.gateway.enabled (eq (include "cnc.gateway.isAWS" .) "true") (or $csIsDeployed $pgpoolEnabled) -}}
+{{- $hc := .Values.cim.gateway.healthCheck | default dict -}}
+{{- $requestPath := $hc.commitServerRequestPath | default "/login/login.htm" -}}
+apiVersion: gateway.k8s.aws/v1beta1
+kind: TargetGroupConfiguration
+metadata:
+  name: {{ $fullName }}-commit-server-tg-config
+  namespace: {{ .Release.Namespace }}
+spec:
+  targetReference:
+    group: ""
+    kind: Service
+    name: {{ $fullName }}-commit-server
+  defaultConfiguration:
+    targetType: ip
+    protocol: HTTP
+    healthCheckConfig:
+      healthCheckPath: {{ $requestPath | quote }}
+      healthCheckInterval: 15
+      healthCheckTimeout: 10
+      healthyThresholdCount: 2
+      unhealthyThresholdCount: 2
+      healthCheckProtocol: HTTP
+{{- end }}
+
+{{- if and .Values.cim.gateway.enabled (eq (include "cnc.gateway.isAzureALB" .) "true") (or $csIsDeployed $pgpoolEnabled) -}}
+{{- $hc := .Values.cim.gateway.healthCheck | default dict -}}
+{{- $requestPath := $hc.commitServerRequestPath | default "/login/login.htm" -}}
+apiVersion: alb.networking.azure.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: {{ $fullName }}-commit-server-healthcheck
+  namespace: {{ .Release.Namespace }}
+spec:
+  targetRef:
+    group: ""
+    kind: Service
+    name: {{ $fullName }}-commit-server
+  default:
+    interval: 15s
+    timeout: 10s
+    healthyThreshold: 1
+    unhealthyThreshold: 2
+    port: 8080
+    http:
+      path: {{ $requestPath | quote }}
+      match:
+        statusCodes:
+          - start: 200
+            end: 399
+{{- end -}}

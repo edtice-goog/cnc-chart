@@ -1,0 +1,145 @@
+{{- $_ :=  set . "serviceName" "common-infra" }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "scan-services.fullname" . }}-cleanup-job
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "scan-services.fullname" . }}-cleanup-job-role
+  namespace: {{ .Release.Namespace }}
+rules:
+  - apiGroups:
+      - batch
+      - extensions
+    resources:
+      - jobs
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+      - deletecollection
+  - apiGroups:
+      - ''
+    resources:
+      - secrets
+    verbs:
+      - delete
+      - deletecollection
+  - apiGroups:
+      - ''
+    resources:
+      - pods
+      - pods/log
+      - configmaps
+    verbs:
+      - get
+      - list
+      - watch
+      - delete
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "scan-services.fullname" . }}-cleanup-job
+  namespace: {{ .Release.Namespace }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "scan-services.fullname" . }}-cleanup-job
+roleRef:
+  kind: Role
+  name: {{ include "scan-services.fullname" . }}-cleanup-job-role
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "scan-services.fullname" . }}-cleanup-job
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+spec:
+  schedule: {{ (index .Values "common-infra").cleanupSchedule | quote }}
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            {{- include "chart.labels" . | nindent 12 }}
+        spec:
+          automountServiceAccountToken: {{ (index .Values .serviceName).automountServiceAccountToken }}
+          {{- include "scan-services.securityContext.pod" . | indent 4 }}
+          serviceAccount: {{ include "scan-services.fullname" . }}-cleanup-job
+          {{- if or .Values.imagePullSecret .Values.global.imagePullSecret }}
+          imagePullSecrets:
+              - name: {{ .Values.imagePullSecret | default .Values.global.imagePullSecret }}
+          {{- end }}
+          {{- with (index .Values "common-infra").nodeSelector }}
+          nodeSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with (index .Values "common-infra").affinity }}
+          affinity:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with (index .Values "common-infra").tolerations | default .Values.tolerations | default .Values.global.tolerations }}
+          tolerations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumes:
+          {{- if not (index .Values .serviceName).automountServiceAccountToken }}
+            - name: kube-api-access
+              projected:
+                sources:
+                  - serviceAccountToken:
+                      expirationSeconds: 3607
+                      path: token
+                  - configMap:
+                      name: kube-root-ca.crt
+                      items:
+                        - key: ca.crt
+                          path: ca.crt
+                  - downwardAPI:
+                      items:
+                        - path: namespace
+                          fieldRef:
+                            apiVersion: v1
+                            fieldPath: metadata.namespace
+                defaultMode: 420
+          {{- end }}
+          containers:
+            - name: {{ .serviceName }}
+              image: {{ include "scan-services.image.name" . }}
+              imagePullPolicy: {{ .Values.imagePullPolicy | default .Values.global.imagePullPolicy }}
+              {{- include "scan-services.securityContext.container" (dict "containerName" .serviceName "Values" .Values "Capabilities" .Capabilities) | indent 14 }}
+              env:
+                - name: CNC_KUBERNETES_NAMESPACE
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.namespace
+                - name: OPERATION
+                  value: "cleanup"
+                - name: CLEANUP_FAILED_JOBS
+                  value: {{ (index .Values "common-infra").cleanupFailedJobs | toString | quote }}
+              command:
+                - /cnc-common-infra
+              resources:
+                {{- toYaml (index .Values "scan-service").cleanupJob.resources | nindent 16 }}
+              volumeMounts:
+              {{- if not (index .Values .serviceName).automountServiceAccountToken }}
+              - name: kube-api-access
+                readOnly: true
+                mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+              {{- end }}
+          dnsPolicy: ClusterFirst
+          restartPolicy: Never

@@ -1,0 +1,486 @@
+{{- $_ :=  set . "serviceName" "storage-service" }}
+{{- $v1Openshift := .Capabilities.APIVersions.Has "security.openshift.io/v1" }}
+{{- include "scan-services.postgres.secret" . | indent 0 }}
+{{- $instanceProfileEnabled := or (and (eq (index .Values .serviceName).storageType "s3") (ne (index .Values .serviceName).s3.serviceAccount "")) (and (eq (index .Values .serviceName).storageType "s3Express") (ne (index .Values .serviceName).s3Express.serviceAccount "")) }}
+---
+{{- if not $instanceProfileEnabled }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "scan-services.fullname" . }}-{{ .serviceName }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+{{- end }}
+---
+{{- if (index .Values .serviceName).migrateJob.enabled }}
+apiVersion: "batch/v1"
+kind: "Job"
+metadata:
+  name: {{ include "scan-services.fullname" . }}-{{ .serviceName }}-migration
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    helm.sh/hook-weight: "-11"
+    helm.sh/hook: pre-upgrade, pre-install
+    helm.sh/hook-delete-policy: before-hook-creation
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        {{- include "chart.labels" . | nindent 8 }}
+    spec:
+      automountServiceAccountToken: {{ (index .Values .serviceName).automountServiceAccountToken }}
+      restartPolicy: "Never"
+      {{- include "scan-services.securityContext.pod" . }}
+      {{- if or .Values.imagePullSecret .Values.global.imagePullSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.imagePullSecret | default .Values.global.imagePullSecret }}
+      {{- end }}
+      {{- with (index .Values "storage-service").nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with (index .Values "storage-service").affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with (index .Values "storage-service").tolerations | default .Values.tolerations | default .Values.global.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ .serviceName }}
+          image: {{ include "scan-services.migrationimage.name" . }}
+          imagePullPolicy: {{ .Values.imagePullPolicy | default .Values.global.imagePullPolicy }}
+          {{- include "scan-services.securityContext.container" (dict "containerName" "migrateJob" "Values" (index .Values .serviceName) "Capabilities" .Capabilities) | indent 10 }}
+          resources:
+            {{- toYaml (index .Values .serviceName).migrateJob.resources | nindent 12 }}
+          env:
+          - name: LOGLEVEL
+            value: {{ (index .Values .serviceName).logLevel }}
+          - name: POSTGRES_SSLMODE
+            value: {{ (index .Values .serviceName).postgres.sslmode | default .Values.postgres.sslmode | default .Values.global.postgres.sslmode }}
+          - name: POSTGRES_SSLROOTCERT
+            value: /opt/postgresql/ssl/postgres-root.pem
+          - name: PGDATABASE
+            value: {{ .Values.postgres.database | quote }}
+          - name: CREATE_DATABASE
+            value: {{ (index .Values "storage-service").postgres.createDatabase | quote }}
+          {{ if $v1Openshift }}
+          - name: JDK_JAVA_OPTIONS
+            value: "-Dcom.redhat.fips=false"
+          {{ end }}
+          {{- include "scan-services.postgres.environment" . | indent 10 }}
+          command:
+          - /bin/sh
+          - -ec
+          - |
+            set -x
+
+            if [[ $CREATE_DATABASE == true ]]; then
+              prefix="sslmode=$POSTGRES_SSLMODE sslrootcert=$POSTGRES_SSLROOTCERT"
+
+              export PGHOST=${POSTGRES_HOST}
+              export PGPORT=${POSTGRES_PORT}
+              export PGUSER=${POSTGRES_USERNAME}
+              export PGPASSWORD=${POSTGRES_PASSWORD}
+
+              RecordCount=$(psql "$prefix" --tuples-only --command "SELECT count(*) FROM pg_database WHERE datname='$POSTGRES_DATABASE'")
+              if [ "$RecordCount" -eq 0 ]; then
+                psql "$prefix" --command "create database \"$POSTGRES_DATABASE\" encoding UTF8"
+              else
+                echo "database $POSTGRES_DATABASE already exists"
+              fi
+            fi
+
+            /liquibase/liquibase "--url=jdbc:postgresql://${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DATABASE}?sslmode=${POSTGRES_SSLMODE}&sslrootcert=${POSTGRES_SSLROOTCERT}" \
+              --changeLogFile=./changelog/changelog.xml \
+              --username="${POSTGRES_USERNAME}" \
+              --password="${POSTGRES_PASSWORD}" \
+              --logLevel="${LOGLEVEL}" \
+              update
+          volumeMounts:
+          {{ if or (index .Values "trust-stores").enabled (index .Values.global "trust-stores").enabled }}
+          - name: import-postgres-root-certs
+            mountPath: /opt/postgresql/ssl
+          {{ end }}
+          {{- if (index .Values "storage-service").migrateJob.extraVolumeMounts }}
+          {{- toYaml (index .Values "storage-service").migrateJob.extraVolumeMounts | nindent 10 }}
+          {{- end }}
+          {{- if .Values.extraVolumeMounts }}
+          {{- toYaml .Values.extraVolumeMounts | nindent 10 }}
+          {{- end }}
+          {{- if .Values.global.extraVolumeMounts }}
+          {{- toYaml .Values.global.extraVolumeMounts | nindent 10 }}
+          {{- end }}
+      {{- if or (index .Values "storage-service").migrateJob.initContainers .Values.postgres.jobSidecars .Values.global.postgres.jobSidecars }}
+      initContainers:
+      {{- if (index .Values "storage-service").migrateJob.initContainers }}
+      {{- include "common.tplvalues.render" ( dict "value" (index .Values "storage-service").migrateJob.initContainers "context" $ ) | nindent 6 }}
+      {{- end }}
+      {{- if include "isKubeVersionValid" . }}
+      {{- if .Values.postgres.jobSidecars }}
+      {{- include "common.tplvalues.render" ( dict "value" .Values.postgres.jobSidecars "context" $ ) | nindent 6 }}
+      {{- end }}
+      {{- if .Values.global.postgres.jobSidecars }}
+      {{- include "common.tplvalues.render" ( dict "value" .Values.global.postgres.jobSidecars "context" $ ) | nindent 6 }}
+      {{- end }}
+      {{- end }}
+      {{- end }}
+      volumes:
+      {{ if or (index .Values "trust-stores").enabled (index .Values.global "trust-stores").enabled }}
+      - name: import-postgres-root-certs
+        configMap:
+          defaultMode: 420
+          name: {{ required "A valid trust-stores configmap name must be provided." ((index .Values "trust-stores").configmapName | default (index .Values.global "trust-stores").configmapName) }}
+      {{ end }}
+      {{- if (index .Values "storage-service").migrateJob.extraVolumes }}
+      {{- toYaml (index .Values "storage-service").migrateJob.extraVolumes | nindent 6 }}
+      {{- end }}
+      {{- if .Values.extraVolumes }}
+      {{- toYaml .Values.extraVolumes | nindent 6 }}
+      {{- end }}
+      {{- if .Values.global.extraVolumes }}
+      {{- toYaml .Values.global.extraVolumes | nindent 6 }}
+      {{- end }}
+{{- end }}
+---
+apiVersion: "v1"
+kind: "Service"
+metadata:
+  name: {{ include "scan-services.fullname" . }}-{{ .serviceName }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "service.selectorLabels" . | nindent 4 }}
+  ports:
+  - name: {{ include "scan-services.fullname" . }}-grpc
+    port: 9999
+    protocol: "TCP"
+    targetPort: 9999
+  - name: {{ include "scan-services.fullname" . }}-http
+    port: 9998
+    protocol: "TCP"
+    targetPort: 9998
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "scan-services.fullname" . }}-{{ .serviceName }}
+  namespace: {{ .Release.Namespace }}
+  {{- if (index .Values .serviceName).annotations }}
+  annotations:
+    {{- with (index .Values .serviceName).annotations }}
+      {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- end }}
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "service.selectorLabels" . | nindent 6 }}
+  strategy:
+    type: "RollingUpdate"
+    rollingUpdate:
+      maxSurge: "100%"
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        {{- include "service.selectorLabels" . | nindent 8 }}
+      annotations:
+        checksum/connect-config: {{ include "scan-services.connectConfig.resourceVersion" . | sha256sum }}
+        {{- if (index .Values .serviceName).observability.exposeMetrics }}
+        prometheus.io/port: "9090"
+        prometheus.io/scrape: "true"
+        {{- end }}
+        {{- with (index .Values .serviceName).podAnnotations }}
+          {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      automountServiceAccountToken: {{ (index .Values .serviceName).automountServiceAccountToken }}
+      {{- include "scan-services.securityContext.pod" . }}
+      {{- if or .Values.imagePullSecret .Values.global.imagePullSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.imagePullSecret | default .Values.global.imagePullSecret }}
+      {{- end }}
+      {{- with (index .Values "storage-service").nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with (index .Values "storage-service").affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with (index .Values "storage-service").tolerations | default .Values.tolerations | default .Values.global.tolerations}}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if $instanceProfileEnabled }}
+      {{- include "storage.custom.serviceAccount" . | indent  6 }}
+      {{- else }}
+      serviceAccountName: {{ include "scan-services.fullname" . }}-{{ .serviceName }}
+      serviceAccount: {{ include "scan-services.fullname" . }}-{{ .serviceName }}
+      {{- end }}
+      volumes:
+        - name: certs
+          secret:
+            defaultMode: 420
+            secretName: {{ include "scan-services.fullname" . }}-storage-service-x509
+        {{ if or (index .Values "trust-stores").enabled (index .Values.global "trust-stores").enabled }}
+        - name: import-postgres-root-certs
+          configMap:
+            defaultMode: 420
+            name: {{ required "A valid trust-stores configmap name must be provided." ((index .Values "trust-stores").configmapName | default (index .Values.global "trust-stores").configmapName) }}
+        {{ end }}
+      {{- if (index .Values .serviceName).gcs.secret.name }}
+        - name: gcs
+          secret:
+            defaultMode: 420
+            secretName: {{ (index .Values .serviceName).gcs.secret.name }}
+      {{- end }}
+      {{- if (index .Values "storage-service").extraVolumes }}
+      {{- toYaml (index .Values "storage-service").extraVolumes | nindent 8 }}
+      {{- end }}
+      {{- if .Values.extraVolumes }}
+      {{- toYaml .Values.extraVolumes | nindent 8 }}
+      {{- end }}
+      {{- if .Values.global.extraVolumes }}
+      {{- toYaml .Values.global.extraVolumes | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ .serviceName }}
+          image: {{ include "scan-services.image.name" . }}
+          imagePullPolicy: {{ .Values.imagePullPolicy | default .Values.global.imagePullPolicy }}
+          {{- include "scan-services.securityContext.container" (dict "containerName" .serviceName "Values" .Values "Capabilities" .Capabilities) | indent 10 }}
+          env:
+          - name: OBSERVABILITY_EXPOSE_METRICS
+            value: {{ (index .Values .serviceName).observability.exposeMetrics | quote }}
+          {{- if (index .Values .serviceName).observability.jaegerURL }}
+          - name: OBSERVABILITY_JAEGER_URL
+            value: {{ (index .Values .serviceName).observability.jaegerURL }}
+          {{- end }}
+          - name: HTTP_ENABLED
+            value: "true"
+          - name: HTTP_PORT
+            value: "9998"
+          {{- if eq .Values.mode "CNC" }}
+          - name: HTTP_AUTHMODE
+            value: cnc-jwt
+          - name: CNC_URL
+            valueFrom:
+              configMapKeyRef:
+                name: {{ include "scan-services.fullname" . }}-connect-config
+                key: cim_url
+          {{- end }}
+          - name: LOGLEVEL
+            value: {{ (index .Values .serviceName).logLevel }}
+          - name: STORAGE_WEBHOSTS
+            value: {{- include "generateTLShosts" . | indent 1 }}
+          - name: STORAGE_CREDENTIALS_AUTH_TYPE
+            value: {{ (index .Values .serviceName).storageType | required "A valid storage type must be configured" }}
+            {{ if eq (index .Values .serviceName).storageType "s3" }}
+          - name: STORAGE_CREDENTIALS_S3_BUCKET
+            value: {{ (index .Values .serviceName).s3.bucket | required "A valid S3 bucket entry is required." }}
+          - name: STORAGE_CREDENTIALS_S3_REGION
+            value: {{ (index .Values .serviceName).s3.region | required "A valid S3 region entry is required." }}
+            {{- if $instanceProfileEnabled }}
+          - name: STORAGE_CREDENTIALS_S3_INSTANCE_PROFILE_ENABLED
+            value: "true"
+            {{- else }}
+          - name: STORAGE_CREDENTIALS_S3_ACCESS_KEY
+            valueFrom:
+              secretKeyRef:
+                name: {{ ((index .Values .serviceName).s3.secret.name | required "A valid S3 secret name must be provided with key aws_access_key, aws_secret_key.") }}
+                key: "aws_access_key"
+          - name: STORAGE_CREDENTIALS_S3_SECRET_KEY
+            valueFrom:
+              secretKeyRef:
+                name: {{ ((index .Values .serviceName).s3.secret.name | required "A valid S3 secret name must be provided with key aws_access_key, aws_secret_key.") }}
+                key: "aws_secret_key"
+            {{- end }}
+            {{- end }}
+            {{ if eq (index .Values .serviceName).storageType "s3Express" }}
+          - name: STORAGE_CREDENTIALS_S3_BUCKET
+            value: {{ (index .Values .serviceName).s3Express.bucket | required "A valid S3Express bucket entry is required." }}
+          - name: STORAGE_CREDENTIALS_S3_REGION
+            value: {{ (index .Values .serviceName).s3Express.region | required "A valid S3Express region entry is required." }}
+            {{- if $instanceProfileEnabled }}
+          - name: STORAGE_CREDENTIALS_S3_INSTANCE_PROFILE_ENABLED
+            value: "true"
+            {{- else }}
+          - name: STORAGE_CREDENTIALS_S3_ACCESS_KEY
+            valueFrom:
+              secretKeyRef:
+                name: {{ ((index .Values .serviceName).s3Express.secret.name | required "A valid S3Express secret name must be provided with key aws_access_key, aws_secret_key.") }}
+                key: "aws_access_key"
+          - name: STORAGE_CREDENTIALS_S3_SECRET_KEY
+            valueFrom:
+              secretKeyRef:
+                name: {{ ((index .Values .serviceName).s3Express.secret.name | required "A valid S3Express secret name must be provided with key aws_access_key, aws_secret_key.") }}
+                key: "aws_secret_key"
+            {{- end }}
+            {{- end }}
+            {{ if eq (index .Values .serviceName).storageType "minio" }}
+          - name: STORAGE_CREDENTIALS_MINIO_ACCESS_KEY
+            valueFrom:
+              secretKeyRef:
+                name: {{ ((index .Values .serviceName).minio.secret.name | required "A valid Minio secret name must be provided with key root-user, root-password") }}
+                key: "root-user"
+          - name: STORAGE_CREDENTIALS_MINIO_BUCKET
+            value: {{ (index .Values .serviceName).minio.bucket | required "A valid Minio bucket entry is required." }}
+          - name: STORAGE_CREDENTIALS_MINIO_REGION
+            value: {{ (index .Values .serviceName).minio.region | required "A valid Minio region entry is required." }}
+          - name: STORAGE_CREDENTIALS_MINIO_SECRET_KEY
+            valueFrom:
+              secretKeyRef:
+                name: {{ ((index .Values .serviceName).minio.secret.name | required "A valid Minio secret name must be provided with key root-user, root-password.") }}
+                key: "root-password"
+            {{- end }}
+            {{ if eq (index .Values .serviceName).storageType "azure" }}
+          - name: STORAGE_CREDENTIALS_AZURE_CONTAINER
+            value: {{ (index .Values .serviceName).azure.container | required "A valid Azure container entry is required." }}
+          - name: STORAGE_CREDENTIALS_AZURE_STORAGE_ACCOUNT_NAME
+            value: {{ (index .Values .serviceName).azure.storageAccountName | required "A valid Azure account name entry is required." }}
+            {{ if eq (index .Values .serviceName).azure.authMode "sharedKey" }}
+          - name: STORAGE_CREDENTIALS_AZURE_KEY
+            valueFrom:
+              secretKeyRef:
+                name: {{ ((index .Values .serviceName).azure.secret.name | required "A valid Azure secret name must be provided with key azure_account_key.") }}
+                key: "azure_account_key"
+            {{- else if eq (index .Values .serviceName).azure.authMode "aadClientSecret" }}
+          - name: STORAGE_CREDENTIALS_AZURE_ENDPOINT_URL
+            valueFrom:
+              secretKeyRef:
+                name: {{ required "A valid Azure secret name must be provided with key azure_endpoint, azure_tenant_id, azure_client_id, azure_client_secret." (index .Values .serviceName).azure.secret.name | quote }}
+                key: azure_endpoint
+                optional: false
+          - name: STORAGE_CREDENTIALS_AZURE_TENANT_ID
+            valueFrom:
+              secretKeyRef:
+                name: {{ required "A valid Azure secret name must be provided with key azure_endpoint, azure_tenant_id, azure_client_id, azure_client_secret." (index .Values .serviceName).azure.secret.name | quote }}
+                key: azure_tenant_id
+                optional: false
+          - name: STORAGE_CREDENTIALS_AZURE_CLIENT_ID
+            valueFrom:
+              secretKeyRef:
+                name: {{ required "A valid Azure secret name must be provided with key azure_endpoint, azure_tenant_id, azure_client_id, azure_client_secret." (index .Values .serviceName).azure.secret.name | quote }}
+                key: azure_client_id
+                optional: false
+          - name: STORAGE_CREDENTIALS_AZURE_CLIENT_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: {{ required "A valid Azure secret name must be provided with key azure_endpoint, azure_tenant_id, azure_client_id, azure_client_secret." (index .Values .serviceName).azure.secret.name | quote }}
+                key: azure_client_secret
+                optional: false
+            {{- end }}
+            {{- end }}
+            {{ if eq (index .Values .serviceName).storageType "gcs" }}
+          - name: STORAGE_CREDENTIALS_GCS_BUCKET
+            value: {{ (index .Values .serviceName).gcs.bucket | required "A valid GCS bucket name entry is required." }}
+            {{- if (index .Values .serviceName).gcs.secret.name }}
+          - name: GOOGLE_APPLICATION_CREDENTIALS
+            value: {{ printf "/opt/gcs/%s" ((index .Values .serviceName).gcs.secret.key | required "A valid GCS secret key must be provided.") }}
+            {{- end }}
+            {{- end }}
+          - name: STORAGE_ENDPOINT_EXTERNAL_URL
+            value: {{ (index .Values .serviceName).endpoint.external.url }}
+          - name: STORAGE_ENDPOINT_INTERNAL_URL
+            value: {{ (index .Values .serviceName).endpoint.internal.url}}
+          - name: STORAGE_ENDPOINT_EXTERNAL_PROXY_PATH
+            value: {{ (index .Values .serviceName).endpoint.external.proxyPath}}
+          - name: POSTGRES_SSLMODE
+            value: {{ (index .Values .serviceName).postgres.sslmode | default .Values.postgres.sslmode | default .Values.global.postgres.sslmode }}
+          - name: POSTGRES_SSLROOTCERT
+            value: /opt/postgresql/ssl/postgres-root.pem
+          {{ if or (index .Values "trust-stores").enabled (index .Values.global "trust-stores").enabled }}
+          - name: SSL_CERT_DIR
+            value: "/opt/postgresql/ssl"
+          {{- end }}
+          - name: MODE
+            value: {{ .Values.mode | quote}}
+            {{- if eq .Values.mode "SRM" }}
+          - name: SRM_URL
+            value: {{ .Values.srm.url | quote }}
+            {{- end }}
+          {{- include "scan-services.postgres.environment" . | indent 10 }}
+          {{- if (index .Values .serviceName).environment }}
+          {{- range $name, $value := (index .Values .serviceName).environment}}
+          - name: {{ $name | quote}}
+            value: {{ $value | quote }}
+          {{- end }}
+          {{- end }}
+          - name: SCAN_HOST
+            value: {{ include "scan-services.fullname" . }}-scan-service
+          - name: SCAN_PORT
+            value: '9999'
+          - name: RETENTION_ENABLED
+            value: {{ (index .Values  "scan-service").retention.enabled | quote}}
+          - name: RETENTION_MINUTES
+            value: {{ (index .Values  "scan-service").retention.minutes | quote}}
+          - name: RETENTION_CLEANUP_INTERVAL
+            value: {{ (index .Values "scan-service").retention.cleanupInterval | quote}}
+          volumeMounts:
+            - mountPath: /opt/auth
+              name: certs
+              readOnly: true
+            {{ if or (index .Values "trust-stores").enabled (index .Values.global "trust-stores").enabled }}
+            - mountPath: /opt/postgresql/ssl
+              name: import-postgres-root-certs
+              readOnly: true
+            {{ end }}
+          {{- if (index .Values .serviceName).gcs.secret.name }}
+            - mountPath: /opt/gcs
+              name: gcs
+              readOnly: true
+            {{- end }}
+            {{- if (index .Values "storage-service").extraVolumeMounts }}
+            {{- toYaml (index .Values "storage-service").extraVolumeMounts | nindent 12 }}
+            {{- end }}
+            {{- if .Values.extraVolumeMounts }}
+            {{- toYaml .Values.extraVolumeMounts | nindent 12 }}
+            {{- end }}
+            {{- if .Values.global.extraVolumeMounts }}
+            {{- toYaml .Values.global.extraVolumeMounts | nindent 12 }}
+            {{- end }}
+          livenessProbe:
+            exec:
+              command: ["/grpc_health_probe", "-addr=localhost:9999", "-tls","-tls-ca-cert=/opt/auth/ca.crt","-tls-client-cert=/opt/auth/tls.crt","-tls-client-key=/opt/auth/tls.key",-tls-server-name={{ include "scan-services.fullname" . }}-{{ .serviceName }} ,"-connect-timeout=250s", "-rpc-timeout=100m"]
+            initialDelaySeconds: {{ (index .Values .serviceName).livenessProbe.initialDelaySeconds}}
+            periodSeconds: {{ (index .Values .serviceName).livenessProbe.periodSeconds}}
+            timeoutSeconds: {{ (index .Values .serviceName).livenessProbe.timeoutSeconds }}
+            failureThreshold: {{ (index .Values .serviceName).livenessProbe.failureThreshold}}
+          ports:
+          - containerPort: 9999
+            name: public-grpc
+            protocol: TCP
+          - name: public-http
+            containerPort: 9998
+            protocol: TCP
+          - name: metrics
+            containerPort: 9090
+            protocol: TCP
+          resources:
+            {{- toYaml (index .Values .serviceName).resources | nindent 12 }}
+      {{- if or (index .Values "storage-service").initContainers .Values.postgres.sidecars .Values.global.postgres.sidecars }}
+      initContainers:
+      {{- if (index .Values "storage-service").initContainers }}
+      {{- include "common.tplvalues.render" ( dict "value" (index .Values "storage-service").initContainers "context" $ ) | nindent 8 }}
+      {{- end }}
+      {{- if include "isKubeVersionValid" . }}
+      {{- if .Values.postgres.sidecars }}
+      {{- include "common.tplvalues.render" ( dict "value" .Values.postgres.sidecars "context" $ ) | nindent 8 }}
+      {{- end }}
+      {{- if .Values.global.postgres.sidecars }}
+      {{- include "common.tplvalues.render" ( dict "value" .Values.global.postgres.sidecars "context" $ ) | nindent 8 }}
+      {{- end }}
+      {{- end }}
+      {{- end }}

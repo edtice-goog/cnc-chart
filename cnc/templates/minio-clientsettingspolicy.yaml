@@ -1,0 +1,31 @@
+{{- if .Values.minioGateway.gateway.enabled -}}
+{{- if and .Values.minioGateway.gateway.policies .Values.minioGateway.gateway.policies.clientSettings .Values.minioGateway.gateway.policies.clientSettings.enabled -}}
+apiVersion: gateway.nginx.org/v1alpha1
+kind: ClientSettingsPolicy
+metadata:
+  labels:
+    app.kubernetes.io/name: {{ .Values.minioGateway.fullnameOverride | default "minio" }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  name: {{ .Values.minioGateway.fullnameOverride | default "minio" }}-client-settings
+  namespace: {{ .Release.Namespace }}
+spec:
+  body:
+    maxSize: {{ .Values.minioGateway.gateway.policies.clientSettings.body.maxSize | default "8g" }}
+    timeout: {{ .Values.minioGateway.gateway.policies.clientSettings.body.timeout | default "60s" }}
+  {{- if .Values.minioGateway.gateway.policies.clientSettings.keepAlive }}
+  keepAlive:
+    {{- if .Values.minioGateway.gateway.policies.clientSettings.keepAlive.requests }}
+    requests: {{ .Values.minioGateway.gateway.policies.clientSettings.keepAlive.requests }}
+    {{- end }}
+    {{- if .Values.minioGateway.gateway.policies.clientSettings.keepAlive.timeout }}
+    timeout:
+      server: {{ .Values.minioGateway.gateway.policies.clientSettings.keepAlive.timeout.server | default "60s" }}
+      header: {{ .Values.minioGateway.gateway.policies.clientSettings.keepAlive.timeout.header | default "60s" }}
+    {{- end }}
+  {{- end }}
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: {{ .Values.minioGateway.fullnameOverride | default "minio" }}
+{{- end }}
+{{- end }}

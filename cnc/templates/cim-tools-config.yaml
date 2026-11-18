@@ -1,0 +1,22 @@
+{{- if or .Values.cim.cimtools.enabled .Values.cim.cimweb.adminPasswordSecret -}}
+{{- $_ :=  set . "serviceName" "cim" }}
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "cnc.fullname" . }}-cim-tools-secret
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    helm.sh/hook: pre-upgrade, pre-install
+    helm.sh/hook-weight: "-15"
+stringData:
+  cim.properties: |
+    maindb.name=${POSTGRES_DATABASE}
+    maindb.password=${POSTGRES_PASSWORD}
+    maindb.url={{ include "cnc.postgres.jdbcurl" . }}
+    maindb.user=${POSTGRES_USERNAME}
+    password=${POSTGRES_PASSWORD}
+    url={{ include "cnc.postgres.jdbcurl" . }}
+    user=${POSTGRES_USERNAME}
+    commitPort={{ .Values.cim.cimweb.commitPort }}
+{{ end }}

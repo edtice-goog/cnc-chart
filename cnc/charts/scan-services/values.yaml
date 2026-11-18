@@ -1,0 +1,926 @@
+# see https://helm.sh/docs/chart_template_guide/subcharts_and_globals/#global-chart-values
+# Global values are values that can be accessed from any chart or subchart by exactly the same name
+# these values are commonly applied for both main chart and its sub-charts if any.
+global:
+  imagePullPolicy: IfNotPresent
+  imagePullSecret: ""
+  imageRegistry: "repo.blackduck.com/containers"
+  imageVersion: "2026.9.0"
+  imageTagSuffix: ""
+  licenseSecretName: ""
+  tolerations: []
+  extraVolumes: []
+  extraVolumeMounts: []
+
+  keygen:
+    enabled: false
+
+  postgres:
+    host: ""
+    password: ""
+    port: 5432
+    sslmode: "verify-ca"
+    user: ""
+    existingSecret: ""
+    sidecars: []
+    jobSidecars: []
+
+  redis:
+    authEnabled: false
+    cacertSecret: ""
+    host: ""
+    passwordSecret: ""
+    port: 6379
+    secure: false
+    verifyHostName: false
+
+  trust-stores:
+    configmapName: "connect-trust-stores"
+    enabled: false
+
+  ingress:
+
+    # additional annotations to provide to the ingress object
+    annotations: {}
+
+    # value for "kubernetes.io/ingress.class" annotation key
+    class: "nginx"
+
+    # if true, a k8s ingress object is created
+    enabled: false
+
+    # array of allowed host name
+    hosts: []
+
+    # the ingress rule path
+    # notes:
+    #  - you may need to set this to "/*" for gce ingress controller
+    #  - you may need to add a path on this if using a context path
+    path: "/"
+
+    # array of object with schema, used to choose tls secret for https:
+    #   - secretName: ""
+    #     hosts: []
+    tls: []
+
+  # The following parameters are used to connect with the forward proxy,
+  # which acts as a Man-In-The-Middle.
+  proxy:
+    # If set to true, this will ensure the request is going through it.
+    enabled: false
+    # Proxy Host
+    host: ""
+    # Proxy Port
+    port: 3128
+    # Proxy TLS mode. This has to be one of the values: "insecure/tls/mtls".
+    # Default is set to "tls"
+    # Note:
+    # - When TLS mode is set to either tls or mtls, the proxy server CA certificate must be included in the trust-stores ConfigMap with key name "proxy-server.pem".
+    # - The file names of other server CA certificates (excluding postgres, proxy server) are not important.
+    # - For eg: Blackduck artifactory server CA certificate can be named as "artifactory.pem" in the trust-stores ConfigMap.
+    tlsmode: "tls"
+    # If proxy is enabled with TLS mode set to "mtls",
+    # then this secret must be provided with keys "client-cert" and "client-key". In other cases, this secret is not required.
+    existingSecret: ""
+
+# See https://kubernetes.io/docs/concepts/containers/images/#image-pull-policy.
+# This is set on each scan-services pod to control its image pull policy.
+# Allowed values: Always, IfNotPresent, Never.
+imagePullPolicy: ""
+
+# See https://kubernetes.io/docs/concepts/containers/images/#specifying-imagepullsecrets-on-a-pod.
+# This must be set if the images are pulled from a repository requiring authentication; the value
+# must be the name of a secret in the same namespace.
+imagePullSecret: ""
+
+# The registry to pull Black Duck Software scan-services images from.  While these images could in principal be pulled from
+# blackduck-repo, in practice using a private local repo will provide much faster image pulls.
+imageRegistry: ""
+
+# The docker image tag used for all Black Duck Software scan-services images.  This can be overridden on a service-by-service
+# basis in subordinate stanzas of the values file.
+imageVersion: ""
+
+# The suffix that appends to all Black Duck Software scan-services images tag.
+# like -ubi
+imageTagSuffix: ""
+
+# See https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration.
+# sets the tolerations on all the scan-services pods
+tolerations: []
+# additional volumes to add to All scan-services pods and jobs except AnalysisJob,cleanUpJob
+extraVolumes: []
+# additional volumeMount to add to All scan-services containers and jobs except AnalysisJob,cleanUpJob
+extraVolumeMounts: []
+
+# Software Risk Manager configuration
+srm:
+
+  # in-cluster url of SRM server
+  url: ""
+
+  # codesight configuration
+  codesight:
+    # url of codesight server
+    url: ""
+
+# Deployment mode configuration
+# Controls which image names to use and authentication behavior
+# Valid values:
+#   - "POLARIS" or "ALTAIR" - uses scan-jobs-svc images
+#   - "CNC", "SRM", or other - uses scan-service images
+# Default: "CNC"
+mode: "CNC"
+
+# configuration of scan-services ingress. If the tls sidecar nginx reverse proxy is enabled, this
+#   will forward to https/8443; otherwise it will forward to http/8080
+ingress:
+
+  # additional annotations to provide to the ingress object
+  annotations: {}
+
+  # value for "kubernetes.io/ingress.class" annotation key
+  class: ""
+
+  # if true, a k8s ingress object is created
+  enabled: false
+
+  # array of allowed host names
+  hosts: []
+
+  # the ingress rule path
+  # notes:
+  #  - you may need to set this to "/*" for gce ingress controllers
+  #  - you may need to add a path on this if using a context path
+  path: ""
+
+  # array of object with schema, used to choose tls secret for https:
+  #   - secretName: ""
+  #     hosts: []
+  tls: []
+
+# Cache service provides analysis caching capabilities
+cache-service:
+
+  # name of the Bucket used by cache service.  NB: this is called
+  #   something different in Azure: it's the "blob container" name within the storage account.
+  #   whereas AWS, Minio, GCP call it a bucket name
+  bucketName: ""
+
+  # if true, cache service is enabled for capture and analysis;
+  #   if false, capture and analysis will run without caching
+  enabled: true
+
+  # if true, exposes time series metrics in prometheus format
+  exposeMetrics: true
+
+  # The image name to use
+  image: "cache-service"
+
+  # additional options to add to java invocation
+  javaOpts: ""
+
+  # log level
+  logLevel: "INFO"
+
+  # The image registry to use
+  registry: ""
+
+  # Storage Provider : Accepted values are `minio`, `gcp`, `aws` and `azure`
+  storageProvider: "minio"
+
+  # The image version to use
+  version: ""
+
+  # sets the pod security context
+  podSecurityContext: {}
+
+  # sets the container security context
+  containerSecurityContext: {}
+
+  # control whether a service account token is automatically mounted into a pod
+  automountServiceAccountToken: false
+
+  # annotation for cache service; these are added to the deployment's metadata
+  annotations: {}
+
+  # sets the affinity
+  affinity: {}
+
+  # sets the node selector
+  nodeSelector: {}
+
+  # sets the tolerations
+  tolerations: []
+
+  # additional env vars injected into the container environment
+  environment:
+
+    # Environment variables to set when CUSTOM_CACERT_ENABLED is true:
+    # Note: Use extraVolumes and extraVolumeMounts (below) to mount custom certificate files
+
+    # Path where trust store will be stored (can be any mounted path)
+    # CERT_STORE_PATH: "/cache/truststore.jks"
+
+    # Trust store type (default: JKS)
+    # CERT_STORE_TYPE: "JKS"
+
+    # Folder where custom cert file is stored (mount location via extraVolumeMounts)
+    # CUSTOM_CACERT_PATH: ""
+
+    # URL pointing to S3 supported storage
+    AWS_ENDPOINT: ""
+
+    # Set to true when custom cacert processing is required
+    CUSTOM_CACERT_ENABLED: false
+
+  # if using AWS for storage, these parameters must be set
+  aws:
+    # Region of S3 bucket
+    region: ""
+
+    # secret containing these keys
+    # - aws_access_key
+    # - aws_secret_key
+    secret: ""
+    # name of the aws instance profile serviceAccount(IRSA)
+    #  if serviceAccount is given,then it will not consider aws credential(access_keys) even they are provided
+    serviceAccount: ""
+
+    # DO NOT enable if General Purpose Bucket is configured
+    # S3Express(Directory) bucket related variables needed by the cache service
+    s3Express:
+      # REQUIRES to set to true when S3Express(Directory) bucket is configured
+      enabled: false
+      # Indicates the number of days to keep cached objects
+      # Helps cache-service to delete old/expired objects from the bucket
+      ttlDays: 90
+
+  # if using Azure storage, set these parameters
+  azure:
+    # secret containing these keys:
+    # - azure_endpoint
+    # - azure_tenant_id
+    # - azure_client_id
+    # - azure_client_secret
+    # - azure_subscription_id
+    # - azure_resource_group
+    secret: ""
+
+  # additional volumes to add to the cache service pod
+  extraVolumes: []
+
+  # additional volume mounts to add to the cache service container
+  #   note: the volumes must be listed under 'extraVolumes"
+  extraVolumeMounts: []
+
+  # if using GCP storage, set these parameters
+  gcp:
+    # GCP project name
+    project: ""
+
+    # GCP credential secret, key name must be
+    # - key.json
+    secret: ""
+
+  # init containers to inject into the cache service pod
+  initContainers: []
+
+  # Liveness Probe for cache service
+  livenessProbe:
+    initialDelaySeconds: 30
+    periodSeconds: 180
+    timeoutSeconds: 60
+    failureThreshold: 3
+
+  # Minio related variables needed by cache service
+  minio:
+    # CA cert to be used for Minio Communication if TLS is enabled
+    cacert: ""
+
+    # Minio Host
+    host: ""
+
+    # Minio Port
+    port: 9000
+
+    # Minio secret containing following keys
+    # - root-user
+    # - root-password
+    secret: ""
+
+    # If TLS enabled for communication with Minio
+    secure: true
+
+    # If Host name need to be verified for Minio communication in case TLS enabled
+    verifyHostName: true
+
+  # additional annotations to add to the pod metadata.  This is a dictionary
+  podAnnotations: {}
+
+  # Readiness Probe for Cache service
+  readinessProbe:
+    initialDelaySeconds: 30
+    periodSeconds: 180
+    timeoutSeconds: 60
+    failureThreshold: 3
+
+  # Redis related variables needed by the cache service
+  redis:
+    # Enable authentication for Redis. In case set to true, password secret also need to be provided
+    authEnabled:
+
+    # Secret containing CA cert to be used for Redis Communication in case TLS enabled
+    # This secret must contain follwing key
+    # - ca.crt
+    cacertSecret: ""
+
+    # Redis database
+    database: "1"
+
+    # Redis Host
+    host: ""
+
+    # Secret containing Redis password (must contain a key named `password`) considering Redis is secured with password
+    passwordSecret: ""
+
+    # Redis Port
+    port:
+
+    # If TLS enabled for communication with Redis
+    secure:
+
+    # If Host name need to be verified for Redis communication in case TLS enabled
+    verifyHostName:
+
+  # The k8s resource requests and limits
+  resources:
+    limits:
+      cpu: "0.5"
+      memory: 1Gi
+    requests:
+      cpu: "0.5"
+      memory: 1Gi
+
+# This performs setup tasks related to certificates and configuration.
+common-infra:
+
+  # schedule to use for cleanup cronjob.  must be a valid schedule for a k8s cronjob
+  cleanupSchedule: "*/5 * * * *"
+
+  # when true, the cleanup job will also delete failed jobs and their associated secrets.
+  # defaults to false to preserve existing behavior (failed pod logs are retained).
+  cleanupFailedJobs: false
+
+  # The image name to use
+  image: "common-infra"
+
+  # The image version to use
+  version: ""
+
+  # The image registry to use
+  registry: ""
+
+  # sets the pod security context
+  podSecurityContext: {}
+
+  # sets the container security context
+  containerSecurityContext: {}
+
+  # control whether a service account token is automatically mounted into a pod
+  automountServiceAccountToken: false
+
+  # sets the affinity
+  affinity: {}
+
+  # sets the node selector
+  nodeSelector: {}
+
+  # sets the tolerations
+  tolerations: []
+
+
+# scan-service creates a k8s deployment which manages scans: scheduling, failures, resources, retries.
+scan-service:
+
+  # The name of a secret, in the same namespace, containing a valid and active Coverity Analysis / SRM SCA / Keygen license.
+    #   This license is only used by the scan services.  See global.licenseSecretName for explanation of how to use
+    #   this field properly.
+    #   The key must be "license.dat" for Coverity Analysis License.
+    #   The key must be "license.json" for SRM SCA / Keygen License.
+  licenseSecretName: ""
+
+  # additional annotations to add to the deployment metadata.  This is a dictionary
+  annotations: {}
+
+  # additional volumes to add to the scan-service pod
+  extraVolumes: []
+
+  # additional volume mounts to add to the scan-service container
+  extraVolumeMounts: []
+
+  # init containers to inject into the scan-service pod
+  initContainers: []
+
+  # additional env vars injected into the container environment
+  environment:
+    # It is the default pool type
+    COVANALYSIS_DEFAULTPOOLTYPE: "small"
+    # the size of the cpu for custom node pool
+    CUSTOMNODEPOOL_CPU: 0
+    # label given for custom node pool
+    CUSTOMNODEPOOL_LABEL: ""
+    # the size of the memory for custom node pool
+    CUSTOMNODEPOOL_MEM: 0
+    # if true, the size of the node pool is extra large
+    EXTRALARGENODEPOOL_ENABLE: false
+    # if true, the size of the node pool is large
+    LARGENODEPOOL_ENABLE: false
+    # the maximum size of the node pool
+    MAXNODEPOOLSIZE: 50
+    # if true, the size of the node pool is medium
+    MEDIUMNODEPOOL_ENABLE: false
+    # if true, the size of the node pool is small
+    SMALLNODEPOOL_ENABLE: true
+    # if true, enable multiple jobs per node
+    MULTIPLEJOBSPERNODE_ENABLE: false
+    # if true, enable custom tls configuration
+    TLS_CUSTOM_ENABLED: false
+    # path where custom cert file is stored
+    TLS_CUSTOM_CERT_PATH: ""
+
+  observability:
+    # if true, exposes time series metrics in prometheus format
+    exposeMetrics: true
+
+    # a jaeger instance to push distributed tracing data to
+    #   set this value to empty to disable -- this will use a NoopTracer
+    jaegerURL: ""
+
+  # The image name to use
+  # Auto-selected based on mode if not specified:
+  #   - For Polaris/Altair (mode == "POLARIS" or "ALTAIR"): scan-jobs-svc
+  #   - For CNC/SRM/other (default): scan-service
+  # Uncomment to override:
+  # image: "scan-service"
+  image: ""
+
+  # the log level to use
+  logLevel: "INFO"
+
+  # additional annotations to add to the pod metadata.  This is a dictionary
+  podAnnotations: {}
+
+  # sets the pod security context
+  podSecurityContext: {}
+
+  # sets the container security context
+  containerSecurityContext: {}
+
+  # control whether a service account token is automatically mounted into a pod
+  automountServiceAccountToken: false
+
+  # The image registry to use
+  registry: ""
+
+  # The image version to use
+  version: ""
+
+  # sets the affinity
+  affinity: {}
+
+  # sets the node selector
+  nodeSelector: {}
+
+  # sets the tolerations
+  tolerations: []
+
+  cleanupJob:
+    resources:
+      limits:
+        cpu: "100m"
+        memory: "128Mi"
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+
+  dispatcher:
+    imagePullPolicy: "IfNotPresent"
+    interval: 5
+    # sets kubernetes scheduler to use for analysis jobs
+    schedulerName: "default-scheduler"
+
+  # this controls a job which upgrades the scan db schema to the latest; it is idempotent and may safely
+  #   be run multiple times, even if not necessary
+  migrateJob:
+
+    # if true, run the scan db schema upgrade; otherwise skip this db upgrade
+    enabled: true
+
+    # The image name to use
+    # Auto-selected based on mode if not specified:
+    #   - For Polaris/Altair (mode == "POLARIS" or "ALTAIR"): scan-jobs-svc-migration
+    #   - For CNC/SRM/other (default): scan-service-migration
+    # Uncomment to override:
+    # image: "scan-jobs-svc-migration"
+    image: ""
+
+    # The image registry to use
+    registry: ""
+
+    # The image version to use
+    version: ""
+
+    # The k8s resource requests and limits
+    resources:
+      limits:
+        cpu: "500m"
+        memory: "1Gi"
+      requests:
+        cpu: "250m"
+        memory: "256Mi"
+
+    # sets the container security context
+    containerSecurityContext: {}
+
+    # init containers to inject into the scan-service-migration job
+    initContainers: []
+
+    # additional volumes to add to the scan-service-migration job
+    extraVolumes: []
+
+    # additional volume mounts to add to the scan-service-migration job
+    extraVolumeMounts: []
+
+  jobRunner:
+
+    # The image name to use
+    image: "job-runner"
+
+    # The image registry to use
+    registry: ""
+
+    # The image version to use
+    version: ""
+
+    # An option to upload the artifacts and the default option is `All`.
+    # Upload Artifacts : Accepted values are `All`, `None`, `OnFailure`, and `LogsOnly`
+    # Options Overview:
+    # All: Runner uploads all the artifacts(`analyzed IDIR`, `analysis output`, and `Execution logs`) in both successful and failed scenarios.
+    # OnFailure: Runner uploads the `analyzed IDIR` and `Execution logs` only in the failed scenario.
+    # None: Runner won't upload any artifact in both successful and failed scenarios.
+    # LogsOnly: Runner uploads the `Execution logs` and `analysis output` in both successful and failed scenarios.
+    uploadArtifacts: "All"
+
+  # this will download Coverity thin client and analysis kits from blackduck-repo
+  tools:
+
+    sync:
+
+    # set this to true, to automatically download tools from blackduck-repo
+      enabled: false
+      # the existing k8s secret name with keys: `username`, `password` to authenticate with blackduck-repo
+      existingSecret: ""
+
+  # if the chart-level postgres options need to be overridden, these parameters
+  #   can be set instead.  Note: the database parameter is always required, since
+  #   it is specific to this service.
+  postgres:
+    database: “scan“
+    host: ""
+    password: ""
+    port:
+    # This has to be one of the values: ""/disable/allow/prefer/require/verify-ca/verify-full
+    sslmode: ""
+    user: ""
+    # the existing k8s secret name with keys: `host`, `port`, `username`, `password`
+    existingSecret: ""
+    createDatabase: true
+
+  # The k8s resource requests and limits
+  resources:
+    limits:
+      cpu: "250m"
+      memory: "1512Mi"
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+
+  # The number of minutes to retain jobs data in the scan-service database.
+  #   Storage objects used and produced by jobs are deleted at the same time.
+  retention:
+    enabled: true
+    minutes: 43200
+    # The interval at which the cleanup process runs to delete old jobs and storage objects.
+    #   supports Go duration format, for example: "10m", "2h", "1h30m". The default is 30 minutes.
+    cleanupInterval: 30m
+
+  # Pagination limit for List scan API. Defaults to 500.
+  api:
+    pagination:
+      limit: 500
+
+  livenessProbe:
+    initialDelaySeconds: 30
+    periodSeconds: 180
+    timeoutSeconds: 60
+    failureThreshold: 3
+
+# this creates a k8s deployment which manages the storage of uploaded idirs, and providing access
+#   to them to the rest of scan-services for analysis jobs.
+storage-service:
+
+  # Maximum IDIR/file size allowed to upload: 10 GB
+  fileUploadSizeLimitBytes: "10737418240"
+
+  # additional annotations to add to the deployment metadata.  This is a dictionary
+  annotations: {}
+
+  # additional volumes to add to the storage-service pod
+  extraVolumes: []
+
+  # additional volume mounts to add to the storage-service container
+  extraVolumeMounts: []
+
+  # init containers to inject into the storage pod
+  initContainers: []
+
+  observability:
+    # if true, exposes time series metrics in prometheus format
+    exposeMetrics: true
+
+    # a jaeger instance to push distributed tracing data to
+    #   set this value to empty to disable -- this will use a NoopTracer
+    jaegerURL: ""
+
+  # The image name to use
+  image: "storage-service"
+
+  # the log level to use
+  logLevel: "INFO"
+
+  # additional annotations to add to the pod metadata.  This is a dictionary
+  podAnnotations: {}
+
+  # sets the pod security context
+  podSecurityContext: {}
+
+  # sets the container security context
+  containerSecurityContext: {}
+
+  # control whether a service account token is automatically mounted into a pod
+  automountServiceAccountToken: false
+
+  # The image registry to use
+  registry: ""
+
+  # the name for the backing storage type; must be one of: s3, s3Express, gcs, azure
+  storageType: ""
+
+  # The image version to use
+  version: ""
+
+  # sets the affinity
+  affinity: {}
+
+  # sets the node selector
+  nodeSelector: {}
+
+  # sets the tolerations
+  tolerations: []
+
+  # this controls a job which upgrades the storage db schema to the latest
+  migrateJob:
+
+    # if true, run the storage db schema upgrade; otherwise skip this db upgrade
+    enabled: true
+
+    # The image name to use
+    image: "storage-service-migration"
+
+    # The image registry to use
+    registry: ""
+
+    # The image version to use
+    version: ""
+
+    # The k8s resource requests and limits
+    resources:
+      limits:
+        cpu: "500m"
+        memory: "1Gi"
+      requests:
+        cpu: "250m"
+        memory: "256Mi"
+
+    # sets the container security context
+    containerSecurityContext: {}
+
+    # additional volumes to add to the storage-service-migration job
+    extraVolumes: []
+
+    # additional volume mounts to add to the storage-service-migration job
+    extraVolumeMounts: []
+
+    # init containers to inject into the storage-service-migration job
+    initContainers: []
+
+  # credentials used to access storage when on Azure
+  #   do not use if on other platforms
+  #   required on Azure
+  azure:
+    # the name of the container (blob storage) to use. This is required when using Azure as the storage
+    container: ""
+    # this is required for both authentication modes.
+    storageAccountName: ""
+    # the Kubernetes secret must include the required keys based on the selected authentication mode:
+    # - `sharedKey`: Contains the `azure_account_key` for authentication.
+    # - `aadClientSecret`: Must include the following keys:
+    #     - `azure_endpoint`: The endpoint URL (e.g., "https://mystorageaccount.blob.core.windows.net").
+    #     - `azure_tenant_id`: The Azure Active Directory tenant ID.
+    #     - `azure_client_id`: The client ID for the Azure application.
+    #     - `azure_client_secret`: The client secret for the Azure application.
+    secret:
+      # the name of the secret
+      name: ""
+    # - `sharedKey` (default, deprecated): Uses the `azure_account_key` from the Kubernetes secret for authentication.
+    # - `aadClientSecret` (recommended, more secure): Uses Azure Active Directory credentials from the Kubernetes secret, including keys like `azure_endpoint`, `azure_tenant_id`, `azure_client_id`, and `azure_client_secret`.
+    authMode: "sharedKey"
+
+  # information used by clients to access backing storage
+  endpoint:
+
+    # information for clients inside the cluster
+    external:
+      # this is needed when the bucket is behind a load balancer or proxy
+      proxyPath: ""
+      # the URL of the backing storage
+      url: ""
+
+    # information for clients inside the cluster
+    internal:
+      # the URL of the backing storage
+      url: ""
+
+  # additional env vars injected into the container environment
+  environment: {}
+
+  # credentials used to access storage when on GCP
+  #   do not use if on other platforms
+  #   required on GCP
+  gcs:
+    # the bucket name
+    bucket: ""
+
+    # information for the secret that contains the GCP service account
+    secret:
+      # the key inside the secret
+      key: ""
+      # the name of the secret
+      name: ""
+
+  # if the chart-level postgres options need to be overridden, these parameters
+  #   can be set instead.  Note: the database parameter is always required, since
+  #   it is specific to this service.
+  postgres:
+    database: “storage“
+    host: ""
+    password: ""
+    port:
+    # This has to be one of the values: ""/disable/allow/prefer/require/verify-ca/verify-full
+    sslmode: ""
+    user: ""
+    # the existing k8s secret name with keys: `host`, `port`, `username`, `password`
+    existingSecret: ""
+    createDatabase: true
+
+  # The k8s resource requests and limits
+  resources:
+    limits:
+      cpu: "250m"
+      memory: "512Mi"
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+
+  # credentials used to access storage when on AWS
+  #   DO NOT use if on other platforms
+  #   REQUIRED on AWS
+  s3:
+    # the bucket name
+    bucket: ""
+    # the bucket region
+    region: ""
+    # the k8s secret with keys aws_secret_key, aws_access_key
+    secret:
+      # the name of the secret
+      name: ""
+    # name of the aws instance profile serviceAccount(IRSA)
+    #  if serviceAccount is given,then it will not consider aws credential(access_keys) even they are provided
+    serviceAccount: ""
+
+  # credentials used to access storage when on AWS
+  #   DO NOT use if on other platforms
+  #   REQUIRED on AWS and When S3Express(Directory) bucket is configured.
+  #   Note: storageType mut be set to "s3Express".
+  s3Express:
+    # the bucket name
+    bucket: ""
+    # the bucket region
+    region: ""
+    # the k8s secret with keys aws_secret_key, aws_access_key
+    secret:
+      # the name of the secret
+      name: ""
+    # name of the aws instance profile serviceAccount(IRSA)
+    #  if serviceAccount is given,then it will not consider aws credential(access_keys) even they are provided
+    serviceAccount: ""
+
+  # credentials used to access storage when on Minio
+  #   DO NOT use if on other platforms
+  #   REQUIRED on Minio
+  minio:
+    # the bucket name
+    bucket: ""
+    # the bucket region
+    region: ""
+    # the k8s secret with keys root-user, root-password
+    secret:
+      # the name of the secret
+      name: ""
+
+  livenessProbe:
+    initialDelaySeconds: 30
+    periodSeconds: 180
+    timeoutSeconds: 60
+    failureThreshold: 3
+
+# database connection parameters.  These may be used by all services, or overridden as needed
+#   by each service.  Note: the database parameter is always required in individual services, since
+#   it is specific to the service.
+postgres:
+  # the name of the database in which to run the 'create db' statements
+  #   this database must already exist and cannot be created by this job
+  database: "postgres"
+  host: ""
+  password: ""
+  port:
+  # This has to be one of the values: ""/disable/allow/prefer/require/verify-ca/verify-full
+  sslmode: ""
+  user: ""
+  # the existing k8s secret name with keys: `host`, `port`, `username`, `password`
+  existingSecret: ""
+  # The container spec to attach as a sidecar for the pods which requires DB connection
+  #   it will be added as a native sidecar which is nothing but an init container with restartPolicy:Always
+  #   so if this container wants to add as a sidecar please use restartPolicy:Always in the spec
+  #   require kubernetes 1.28 to use native-sidecar
+  #   see https://kubernetes.io/blog/2023/08/25/native-sidecar-containers/
+  sidecars: []
+
+  # The container spec to attach as a sidecar for the jobs which requires DB connection
+  #   it will be added as a native sidecar which is nothing but an init container with restartPolicy:Always
+  #   so if this container wants to add as a sidecar please use restartPolicy:Always in the spec
+  #   require kubernetes 1.28 to use native-sidecar
+  #   see https://kubernetes.io/blog/2023/08/25/native-sidecar-containers
+  jobSidecars: []
+
+# This is used to add any needed trust store certificates to scan-services.
+# Note: the postgres root cert must be named 'postgres-root.pem'
+trust-stores:
+
+  # The name of the configmap containing the trust store certs.
+  # The names of all files (except postgres-root.pem, proxy-server.pem) are not important,
+  #   since they will all be mounted into the same directory, and all files
+  #   in that directory will be treated as certs and loaded into scan-services's trust store.
+  #   Example of creating a configmap:
+  #   kubectl create configmap trust-stores \
+  #     --from-file=postgres-root.pem=<postgres-root.pem> \
+  #     --from-file=proxy-server.pem=<proxy-server.pem> \
+  #     --from-file=<LDAP-root-cert> \
+  #     --from-file=<Jira-root-cert> \
+  #     --from-file=<Bugzilla-root-cert> \
+  #     --namespace "$NS"
+  configmapName: ""
+
+  # If set to true, this will allow trust store import.
+  enabled:
+
+# The following parameters are used to connect with the forward proxy,
+# which acts as a Man-In-The-Middle.
+proxy:
+  # If set to true, this will ensure the request is going through it.
+  enabled:
+  # Proxy Host
+  host: ""
+  # Proxy Port
+  port:
+  # Proxy TLS mode. This has to be one of the values: "insecure/tls/mtls".
+  # Default is set to "tls"
+  # Note:
+  # - When TLS mode is set to either tls or mtls, the proxy server CA certificate must be included in the trust-stores ConfigMap with key name "proxy-server.pem".
+  # - The file names of other server CA certificates (excluding postgres, proxy server) are not important.
+  # - For eg: Blackduck artifactory server CA certificate can be named as "artifactory.pem" in the trust-stores ConfigMap.
+  tlsmode: ""
+  # If proxy is enabled with TLS mode set to "mtls",
+  # then this secret must be provided with keys "client-cert" and "client-key". In other cases, this secret is not required.
+  existingSecret: ""

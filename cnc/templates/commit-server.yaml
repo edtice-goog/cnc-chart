@@ -1,0 +1,301 @@
+{{- $useTLS := or (index .Values "scan-services").enabled .Values.cim.cimweb.tlsSidecar.enabled }}
+{{- $_ :=  set . "serviceName" "commit-server" }}
+{{ $ccdServiceName := "commit-server" }}
+{{- $v1Openshift := .Capabilities.APIVersions.Has "security.openshift.io/v1" }}
+{{- $fullName := include "cnc.fullname" . -}}
+{{ $path := .Values.cim.ingress.ccdPath | default .Values.global.ingress.ccdPath }}
+{{- $pgpoolEnabled := and .Values.cim.pgpool.enabled (gt (int .Values.cim.pgpool.replicas) 0) }}
+
+{{- if or (and (gt (int .Values.cim.cimweb.replicas) 1) (gt (int (index .Values.cim .serviceName).replicas) 0) .Values.cim.cimweb.enabled) (and .Values.cim.pgpool.enabled (gt (int .Values.cim.pgpool.replicas) 0)) -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  {{- if .Values.cim.cimweb.annotations }}
+  annotations:
+    {{- with .Values.cim.cimweb.annotations }}
+      {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- end }}
+  name: {{ $fullName }}-cs
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "service.labels" . | nindent 4 }}
+spec:
+  replicas: {{ (index .Values.cim .serviceName).replicas }}
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "cim.common.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        {{- include "cimweb.common.annotations" . | indent 8 }}
+      labels:
+        # serviceName is getting overrided, When sourcing yaml file's to set annotations in the process of calculating checksum.
+        {{- $_ :=  set . "serviceName" "commit-server" }}
+        {{- include "cim.common.selectorLabels" . | nindent 8 }}
+    spec:
+      automountServiceAccountToken: {{ (index .Values.cim).automountServiceAccountToken }}
+      {{- include "cnc.securityContext.pod" . }}
+      {{- if or .Values.imagePullSecret .Values.global.imagePullSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.imagePullSecret | default .Values.global.imagePullSecret }}
+      {{- end }}
+      {{- with .Values.cim.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.cim.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.cim.tolerations | default .Values.tolerations | default .Values.global.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        {{- if $useTLS }}
+        - name: tls-sidecar
+          image: {{ include "tlsSidecar.image.name" . }}
+          imagePullPolicy: {{ .Values.imagePullPolicy | default .Values.global.imagePullPolicy }}
+          {{- include "cnc.securityContext.container" (dict "containerName" "tlsSidecar" "Values" .Values.cim.cimweb "Capabilities" .Capabilities) | indent 10 }}
+          ports:
+            {{- include "tlsSidecar.common.ports" . | indent 12 }}
+          resources:
+            limits:
+              cpu: "0.1"
+              memory: 128Mi
+            requests:
+              cpu: "0.1"
+              memory: 128Mi
+          volumeMounts:
+            {{- include "tlsSidecar.common.volumeMounts" . | indent 12 }}
+        {{- end }}
+        - name: cim-webapp
+          command: ["/coverity/cim.sh"]
+          {{- include "cnc.securityContext.container" (dict "containerName" "cimweb" "Values" .Values.cim "Capabilities" .Capabilities) | indent 10 }}
+          env:
+            # Set serviceName as cim to add ccd related envs
+            {{- $_ :=  set . "serviceName" "cim" }}
+            {{- include "cnc.postgres.environment" . | indent 12 }}
+            {{- include "jgroups.service.url" . | nindent 12 }}
+            # Revert serviceName to commit-server
+            {{- $_ :=  set . "serviceName" "commit-server" }}
+            {{- include "cimweb.common.environment" . | indent 12 }}
+            - name: LOG_LEVEL
+              value: {{ (index .Values.cim .serviceName).logLevel }}
+          image: {{ include "cimweb.image.name" . }}
+          imagePullPolicy: {{ .Values.imagePullPolicy | default .Values.global.imagePullPolicy }}
+          livenessProbe:
+            {{- include "cimweb.common.livenessProbe" . | indent 12 }}
+          readinessProbe:
+            {{- include "cimweb.common.readinessProbe" . | indent 12 }}
+          startupProbe:
+            {{- include "cimweb.common.startupProbe" . | indent 12 }}
+          ports:
+            {{- include "cimweb.common.ports" . | indent 12 }}
+          resources:
+            {{- toYaml .Values.cim.cimweb.resources | nindent 12 }}
+          volumeMounts:
+            {{- include "cimweb.common.volumeMounts" . | indent 12 }}
+            {{- if .Values.cim.cimweb.extraVolumeMounts }}
+            {{- toYaml .Values.cim.cimweb.extraVolumeMounts | nindent 12 }}
+            {{- end }}
+            {{- if .Values.extraVolumeMounts }}
+            {{- toYaml .Values.extraVolumeMounts | nindent 12 }}
+            {{- end }}
+            {{- if .Values.global.extraVolumeMounts }}
+            {{- toYaml .Values.global.extraVolumeMounts | nindent 12 }}
+            {{- end }}
+      initContainers:
+        {{- if .Values.cim.cimweb.initContainers }}
+        {{- toYaml .Values.cim.cimweb.initContainers | nindent 8 }}
+        {{- end }}
+      {{- if .Values.cim.cimdownloads.enabled }}
+        - name: cim-downloads
+          command: ["sh", "-c", "cp -r /checker-policy/cov-checker-policy/. /cimweb/checker-policy/ && chmod +x /cimweb/checker-policy/bin/cov-checker-policy"]
+          image: {{ include "cimdownloads.image.name" . }}
+          imagePullPolicy: {{ .Values.imagePullPolicy | default .Values.global.imagePullPolicy }}
+          {{- include "cnc.securityContext.container" (dict "containerName" "cimdownloads" "Values" .Values.cim "Capabilities" .Capabilities) | indent 10 }}
+          resources:
+            limits:
+              cpu: "0.1"
+              memory: 128Mi
+            requests:
+              cpu: "0.1"
+              memory: 128Mi
+          volumeMounts:
+            - name: cim-checker-policy
+              mountPath: /cimweb/checker-policy
+        {{- if .Values.extraVolumeMounts }}
+        {{- toYaml .Values.extraVolumeMounts | nindent 12 }}
+        {{- end }}
+        {{- if .Values.global.extraVolumeMounts }}
+        {{- toYaml .Values.global.extraVolumeMounts | nindent 12 }}
+        {{- end }}
+      {{- end }}
+      {{- if include "isKubeVersionValid" . }}
+      {{- if .Values.global.postgres.sidecars }}
+      {{- include "common.tplvalues.render" ( dict "value" .Values.global.postgres.sidecars "context" $ ) | nindent 8 }}
+      {{- end }}
+      {{- end }}
+      volumes:
+        {{- if $useTLS }}
+        - name: nginx-cert
+          secret:
+            secretName: {{ include "cnc.fullname" . }}-cs-x509
+        {{- end }}
+        {{- if (index .Values "scan-services").enabled }}
+        - name: mtls-cert
+          secret:
+            secretName: {{ include "cnc.fullname" . }}-cs-x509
+        {{- end }}
+        {{- include "cim.common.volumes" . | indent 8 }}
+        {{- if .Values.cim.cimweb.extraVolumes }}
+        {{- toYaml .Values.cim.cimweb.extraVolumes | nindent 8 }}
+        {{- end }}
+        {{- if .Values.extraVolumes }}
+        {{- toYaml .Values.extraVolumes | nindent 8 }}
+        {{- end }}
+        {{- if .Values.global.extraVolumes }}
+        {{- toYaml .Values.global.extraVolumes | nindent 8 }}
+        {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullName }}-{{ .serviceName }}
+  namespace: {{ .Release.Namespace }}
+  annotations:
+  {{- if or (eq .Values.cim.ingress.class "gce") (eq .Values.global.ingress.class "gce") }}
+    cloud.google.com/neg: '{"ingress": true}'
+  {{- end }}
+  {{- if .Values.cim.serviceAnnotations }}
+    {{- with .Values.cim.serviceAnnotations }}
+      {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- end }}
+  labels:
+    {{- include "service.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8080
+      targetPort: 8080
+      protocol: TCP
+      name: p8080
+    - port: 8443
+      targetPort: 8443
+      protocol: TCP
+      name: p8443
+    {{- if .Values.cim.cimweb.exposeCommitPort }}
+    - port: {{ .Values.cim.cimweb.commitPort }}
+      targetPort: {{ .Values.cim.cimweb.commitPort }}
+      protocol: TCP
+      name: commit
+    {{- end }}
+  selector:
+    {{- include "cim.common.selectorLabels" . | nindent 4 }}
+{{- if not .Values.cim.gateway.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  annotations:
+    {{- if or (eq .Values.cim.ingress.class "nginx") (eq .Values.global.ingress.class "nginx")}}
+    nginx.ingress.kubernetes.io/backend-protocol: {{ if $useTLS }}"HTTPS"{{ else }}"HTTP"{{ end }}
+    {{- end }}
+  {{- with .Values.cim.ingress.annotations | default .Values.global.ingress.annotations }}
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  labels:
+    {{- include "service.labels" . | nindent 4 }}
+  name: {{ $fullName }}-{{ $ccdServiceName }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  ingressClassName: {{ .Values.cim.ingress.class | default .Values.global.ingress.class }}
+  {{- if or .Values.cim.ingress.tls .Values.global.ingress.tls }}
+  {{- if or (gt (len .Values.cim.ingress.tls) 0) (gt (len .Values.global.ingress.tls) 0)}}
+  tls:
+    {{- range .Values.cim.ingress.tls | default .Values.global.ingress.tls }}
+    - hosts:
+      {{- with .hosts }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      secretName: {{ required "A valid tls ingress secret name must be provided." .secretName }}
+    {{- end }}
+  {{- end }}
+  {{- end }}
+  rules:
+    {{ if and (eq (len .Values.cim.ingress.hosts) 0) (eq (len .Values.global.ingress.hosts) 0) }}
+    - http:
+        paths:
+          - backend:
+              service:
+                name: {{ $fullName }}-{{ $ccdServiceName }}
+                port:
+                  number: {{ if $useTLS }}8443{{ else }}8080{{ end }}
+            path: {{ $path }}
+            pathType: ImplementationSpecific
+        {{- if $pgpoolEnabled }}
+          - backend:
+              service:
+                name: {{ $fullName }}-{{ $ccdServiceName }}
+                port:
+                  number: {{ if $useTLS }}8443{{ else }}8080{{ end }}
+            path: /desktop-analysis
+            pathType: ImplementationSpecific
+          - backend:
+              service:
+                name: {{ $fullName }}-{{ $ccdServiceName }}
+                port:
+                  number: {{ if $useTLS }}8443{{ else }}8080{{ end }}
+            path: /api/v2/triageStores
+            pathType: ImplementationSpecific
+          - backend:
+              service:
+                name: {{ $fullName }}-{{ $ccdServiceName }}
+                port:
+                  number: {{ if $useTLS }}8443{{ else }}8080{{ end }}
+            path: /api/v2/componentMaps
+            pathType: ImplementationSpecific
+        {{- end }}
+    {{- end }}
+    {{- range $host := .Values.cim.ingress.hosts | default .Values.global.ingress.hosts }}
+    - host: {{ required "A valid host entry is required." $host }}
+      http:
+        paths:
+          - backend:
+              service:
+                name: {{ $fullName }}-{{ $ccdServiceName }}
+                port:
+                  number: {{ if $useTLS }}8443{{ else }}8080{{ end }}
+            path: {{ $path }}
+            pathType: ImplementationSpecific
+        {{- if $pgpoolEnabled }}
+          - backend:
+              service:
+                name: {{ $fullName }}-{{ $ccdServiceName }}
+                port:
+                  number: {{ if $useTLS }}8443{{ else }}8080{{ end }}
+            path: /desktop-analysis
+            pathType: ImplementationSpecific
+          - backend:
+              service:
+                name: {{ $fullName }}-{{ $ccdServiceName }}
+                port:
+                  number: {{ if $useTLS }}8443{{ else }}8080{{ end }}
+            path: /api/v2/triageStores
+            pathType: ImplementationSpecific
+          - backend:
+              service:
+                name: {{ $fullName }}-{{ $ccdServiceName }}
+                port:
+                  number: {{ if $useTLS }}8443{{ else }}8080{{ end }}
+            path: /api/v2/componentMaps
+            pathType: ImplementationSpecific
+        {{- end }}
+    {{- end }}
+{{- end }}
+{{- end }}

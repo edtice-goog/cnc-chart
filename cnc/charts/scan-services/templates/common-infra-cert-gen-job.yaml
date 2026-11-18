@@ -1,0 +1,303 @@
+{{- $_ :=  set . "serviceName" "common-infra" }}
+{{- $cimServiceName := "cim" }}
+{{- $cimCcdServiceName := "commit-server" }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "scan-services.fullname" . }}-cert-gen
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    helm.sh/hook-weight: "-12"
+    helm.sh/hook: pre-upgrade, pre-install
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "scan-services.fullname" . }}-cert-gen-role
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    helm.sh/hook-weight: "-12"
+    helm.sh/hook: pre-upgrade, pre-install
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  annotations:
+    helm.sh/hook-weight: "-11"
+    helm.sh/hook: pre-upgrade, pre-install
+  name: {{ include "scan-services.fullname" . }}-cert-gen
+  namespace: {{ .Release.Namespace }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "scan-services.fullname" . }}-cert-gen
+roleRef:
+  kind: Role
+  name: {{ include "scan-services.fullname" . }}-cert-gen-role
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "scan-services.fullname" . }}-cert-gen
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    helm.sh/hook-weight: "-10"
+    helm.sh/hook: pre-upgrade, pre-install
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  backoffLimit: 0
+  completions: 1
+  parallelism: 1
+  template:
+    metadata:
+      annotations:
+        cluster-autoscaler.kubernetes.io/safe-to-evict: "false"
+      creationTimestamp: null
+      name: {{ include "scan-services.fullname" . }}-cert-gen
+    spec:
+      automountServiceAccountToken: {{ (index .Values .serviceName).automountServiceAccountToken }}
+      {{- include "scan-services.securityContext.pod" . }}
+      {{- if or .Values.imagePullSecret .Values.global.imagePullSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.imagePullSecret | default .Values.global.imagePullSecret }}
+      {{- end }}
+      {{- with (index .Values "common-infra").nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with (index .Values "common-infra").affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with (index .Values "common-infra").tolerations | default .Values.tolerations | default .Values.global.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - image: {{ include "scan-services.image.name" . }}
+          {{- include "scan-services.securityContext.container" (dict "containerName" .serviceName "Values" .Values "Capabilities" .Capabilities) | indent 10 }}
+          command:
+            - /cnc-common-infra
+            - generate
+            - --manifest
+            - /manifests/manifest.yml
+            - --file-type
+            - yaml
+          imagePullPolicy: {{ .Values.imagePullPolicy | default .Values.global.imagePullPolicy }}
+          env:
+            - name: CNC_KUBERNETES_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: OPERATION
+              value: "certgen"
+          name: cnc-common-infra
+          resources:
+            limits:
+              cpu: "0.1"
+              memory: 128Mi
+            requests:
+              cpu: "0.1"
+              memory: 128Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+            - name: manifests
+              mountPath: /manifests
+            {{- if not (index .Values .serviceName).automountServiceAccountToken }}
+            - name: kube-api-access
+              readOnly: true
+              mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+            {{- end }}
+      dnsPolicy: ClusterFirst
+      restartPolicy: Never
+      serviceAccountName: {{ include "scan-services.fullname" . }}-cert-gen
+      volumes:
+        - name: manifests
+          configMap:
+            name: {{ include "scan-services.fullname" . }}-cert-gen-manifests
+        {{- if not (index .Values .serviceName).automountServiceAccountToken }}
+        - name: kube-api-access
+          projected:
+            sources:
+              - serviceAccountToken:
+                  expirationSeconds: 3607
+                  path: token
+              - configMap:
+                  name: kube-root-ca.crt
+                  items:
+                    - key: ca.crt
+                      path: ca.crt
+              - downwardAPI:
+                  items:
+                    - path: namespace
+                      fieldRef:
+                        apiVersion: v1
+                        fieldPath: metadata.namespace
+            defaultMode: 420  
+        {{- end }}
+      terminationGracePeriodSeconds: 30
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "scan-services.fullname" . }}-cert-gen-manifests
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    helm.sh/hook-weight: "-11"
+    helm.sh/hook: pre-upgrade, pre-install
+    helm.sh/hook-delete-policy: before-hook-creation
+data:
+  manifest.yml: |
+    globalConfig:
+      keyLength: 2048
+      validityInDays: 365
+    certificates:
+      - storage:
+          k8s:
+            secret:
+              name: {{ include "scan-services.fullname" . }}-ca-x509
+        request:
+          configuration:
+            commonName: CNC Certificate Authority
+            organization:
+              - 00000000-0000-0000-0000-000000000000
+            country:
+              - US
+          ipAddresses:
+          san:
+          - "ca"
+          type:
+            - ca
+            - server
+            - client
+        children:
+          - storage:
+              k8s:
+                secret:
+                  name: {{ include "scan-services.fullname" . }}-cache-service-x509
+            request:
+              configuration:
+                commonName: cache-service
+                organization:
+                  - 00000000-0000-0000-0000-000000000000
+                country:
+                  - US
+              ipAddresses:
+              san:
+              - {{ include "scan-services.fullname" . }}-cache-service
+              - {{ include "scan-services.fullname" . }}-cache-service.{{ .Release.Namespace }}.svc.cluster.local
+              type:
+                - server
+                - client
+          - storage:
+              k8s:
+                secret:
+                  name: {{ include "scan-services.fullname" . }}-storage-service-x509
+            request:
+              configuration:
+                commonName: storage-service
+                organization:
+                  - 00000000-0000-0000-0000-000000000000
+                country:
+                  - US
+              ipAddresses:
+              san:
+              - {{ include "scan-services.fullname" . }}-storage-service
+              - {{ include "scan-services.fullname" . }}-storage-service.{{ .Release.Namespace }}.svc.cluster.local
+              type:
+                - server
+                - client
+          - storage:
+              k8s:
+                secret:
+                  name: {{ include "scan-services.fullname" . }}-storage-proxy-service-x509
+            request:
+              configuration:
+                commonName: storage-proxy-service
+                organization:
+                  - 00000000-0000-0000-0000-000000000000
+                country:
+                  - US
+              ipAddresses:
+              san:
+              - {{ include "scan-services.fullname" . }}-storage-proxy-service
+              - {{ include "scan-services.fullname" . }}-storage-proxy-service.{{ .Release.Namespace }}.svc.cluster.local
+              type:
+                - server
+                - client
+          - storage:
+              k8s:
+                secret:
+                  name: {{ include "scan-services.fullname" . }}-cim-x509
+            request:
+              configuration:
+                commonName: cim
+                organization:
+                  - 00000000-0000-0000-0000-000000000000
+                country:
+                  - US
+              ipAddresses:
+              san:
+              - {{ include "scan-services.fullname" . }}-{{ $cimServiceName }}
+              - {{ include "scan-services.fullname" . }}-{{ $cimServiceName }}.{{ .Release.Namespace }}.svc.cluster.local
+              type:
+                - server
+                - client
+          - storage:
+              k8s:
+                secret:
+                  name: {{ include "scan-services.fullname" . }}-cs-x509
+            request:
+              configuration:
+                commonName: cim
+                organization:
+                  - 00000000-0000-0000-0000-000000000000
+                country:
+                  - US
+              ipAddresses:
+              san:
+              - {{ include "scan-services.fullname" . }}-{{ $cimCcdServiceName }}
+              - {{ include "scan-services.fullname" . }}-{{ $cimCcdServiceName }}.{{ .Release.Namespace }}.svc.cluster.local
+              type:
+                - server
+                - client
+          - storage:
+              k8s:
+                secret:
+                  name: {{ include "scan-services.fullname" . }}-scan-service-x509
+            request:
+              configuration:
+                commonName: scan-service
+                organization:
+                  - 00000000-0000-0000-0000-000000000000
+                country:
+                  - US
+              ipAddresses:
+              san:
+              - {{ include "scan-services.fullname" . }}-scan-service
+              - {{ include "scan-services.fullname" . }}-scan-service.{{ .Release.Namespace }}.svc.cluster.local
+              type:
+                - ca
+                - server
+                - client
+            children:
+              - storage:
+                  k8s:
+                    secret:
+                      name: {{ include "scan-services.fullname" . }}-admin-x509
+                request:
+                  configuration:
+                    commonName: admin
+                    organization:
+                      - 00000000-0000-0000-0000-000000000000
+                    country:
+                      - US
+                  ipAddresses:
+                  san:
+                  type:
+                    - client

@@ -1,0 +1,18 @@
+dependencies:
+- name: postgresql
+  repository: oci://us-docker.pkg.dev/coverity-cloud-sandbox-dev/bitnami
+  version: 18.6.5
+- name: minio
+  repository: oci://us-docker.pkg.dev/coverity-cloud-sandbox-dev/bitnami
+  version: 17.0.21
+- name: redis
+  repository: oci://us-docker.pkg.dev/coverity-cloud-sandbox-dev/bitnami
+  version: 27.0.10
+- name: scan-services
+  repository: oci://us-docker.pkg.dev/coverity-cloud-sandbox-dev/coverity-helm-charts
+  version: 2026.9.0-5062945+2026.9
+- name: triage-suggestion-service
+  repository: oci://us-docker.pkg.dev/coverity-cloud-sandbox-dev/coverity-helm-charts
+  version: 2026.09.16175305
+digest: sha256:b30f09f3312660bbc56ec6195296a79c3150bd983b53f68b3793c472e7efc688
+generated: "2026-09-17T10:43:02.298778888Z"

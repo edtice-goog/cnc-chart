@@ -1,0 +1,45 @@
+{{- if and .Values.workerDeployment .Values.workerHpa.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "triage-suggestion-service.fullname" . }}-worker
+  labels:
+    {{- include "triage-suggestion-service.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "triage-suggestion-service.fullname" . }}-worker
+  minReplicas: {{ .Values.workerHpa.minReplicas | default 2 }}
+  maxReplicas: {{ .Values.workerHpa.maxReplicas | default 10 }}
+  metrics:
+  {{- if .Values.workerHpa.targetCPUUtilizationPercentage }}
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: {{ .Values.workerHpa.targetCPUUtilizationPercentage }}
+  {{- end }}
+  {{- if .Values.workerHpa.targetMemoryUtilizationPercentage }}
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: {{ .Values.workerHpa.targetMemoryUtilizationPercentage }}
+  {{- end }}
+  {{- if .Values.workerHpa.queueDepthMetric }}
+  - type: External
+    external:
+      metric:
+        name: {{ .Values.workerHpa.queueDepthMetric.name }}
+        selector:
+          matchLabels:
+            queue: {{ .Values.workerHpa.queueDepthMetric.queue | default "triage-requests" }}
+      target:
+        type: AverageValue
+        averageValue: {{ .Values.workerHpa.queueDepthMetric.targetAverageValue | default "30" }}
+  {{- end }}
+{{- end }}

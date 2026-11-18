@@ -1,0 +1,1877 @@
+{
+    "type": "object",
+    "properties": {
+        "global": {
+            "type": "object",
+            "properties": {
+                "imagePullPolicy": {
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "imagePullSecret": {
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "imageRegistry": {
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "imageVersion": {
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "imageTagSuffix": {
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "licenseSecretName": {
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "keygen": {
+                    "type": "object",
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean"
+                        }
+                    }
+                },
+                "postgres": {
+                    "type": "object",
+                    "properties": {
+                        "host": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "password": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "port": {
+                            "type": "integer"
+                        },
+                        "database": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "sslmode": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "user": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "existingSecret": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        }
+                    }
+                },
+                "redis": {
+                    "type": "object",
+                    "properties": {
+                        "authEnabled": {
+                            "type": "boolean"
+                        },
+                        "cacertSecret": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "host": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "passwordSecret": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "port": {
+                            "type": "integer"
+                        },
+                        "secure": {
+                            "type": "boolean"
+                        },
+                        "verifyHostName": {
+                            "type": "boolean"
+                        }
+                    }
+                },
+                "trust-stores": {
+                    "type": "object",
+                    "properties": {
+                        "configmapName": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "enabled": {
+                            "type": "boolean"
+                        }
+                    }
+                },
+                "proxy": {
+                    "type": "object",
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean"
+                        },
+                        "host": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "port": {
+                            "type": "integer"
+                        },
+                        "tlsmode": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "existingSecret": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        }
+                    }
+                },
+                "ingress": {
+                    "type": "object",
+                    "properties": {
+                        "class": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "enabled": {
+                            "type": "boolean"
+                        },
+                        "path": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "ccdPath": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "imagePullPolicy": {
+            "type": [
+                "string",
+                "null"
+            ]
+        },
+        "imagePullSecret": {
+            "type": [
+                "string",
+                "null"
+            ]
+        },
+        "imageRegistry": {
+            "type": [
+                "string",
+                "null"
+            ]
+        },
+        "imageVersion": {
+            "type": [
+                "string",
+                "null"
+            ]
+        },
+        "imageTagSuffix": {
+            "type": [
+                "string",
+                "null"
+            ]
+        },
+        "cim": {
+            "type": "object",
+            "properties": {
+                "automountServiceAccountToken": {
+                    "type": "boolean"
+                },
+                "cimdownloads": {
+                    "type": "object",
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean"
+                        },
+                        "image": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "registry": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "version": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        }
+                    }
+                },
+                "cimtools": {
+                    "type": "object",
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean"
+                        },
+                        "image": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "registry": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "version": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "resources": {
+                            "type": "object",
+                            "properties": {
+                                "limits": {
+                                    "type": "object",
+                                    "properties": {
+                                        "cpu": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        },
+                                        "memory": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        }
+                                    }
+                                },
+                                "requests": {
+                                    "type": "object",
+                                    "properties": {
+                                        "cpu": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        },
+                                        "memory": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "volume": {
+                            "type": "object",
+                            "properties": {
+                                "accessMode": {
+                                    "type": [
+                                        "string",
+                                        "null"
+                                    ]
+                                },
+                                "enabled": {
+                                    "type": "boolean"
+                                },
+                                "mountPath": {
+                                    "type": [
+                                        "string",
+                                        "null"
+                                    ]
+                                },
+                                "storage": {
+                                    "type": [
+                                        "string",
+                                        "null"
+                                    ]
+                                }
+                            }
+                        },
+                        "automountServiceAccountToken": {
+                            "type": "boolean"
+                        }
+                    }
+                },
+                "cimweb": {
+                    "type": "object",
+                    "properties": {
+                        "replicas": {
+                            "type": "integer"
+                        },
+                        "keystore": {
+                            "type": "object",
+                            "properties": {
+                                "enabled": {
+                                    "type": "boolean"
+                                },
+                                "certificateSecret": {
+                                    "type": [
+                                        "string",
+                                        "null"
+                                    ]
+                                }
+                            }
+                        },
+                        "commitPort": {
+                            "type": "integer"
+                        },
+                        "contextPath": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "exposeMetrics": {
+                            "type": "boolean"
+                        },
+                        "enabled": {
+                            "type": "boolean"
+                        },
+                        "exposeCommitPort": {
+                            "type": "boolean"
+                        },
+                        "image": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "javaOpts": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "logLevel": {
+                            "type": [
+                                "string",
+                                "null"
+                            ],
+                            "pattern": "^(ALL|TRACE|DEBUG|INFO|WARN|ERROR|FATAL|OFF|all|trace|debug|info|warn|error|fatal|off|all)$"
+                        },
+                        "registry": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "version": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "webUrl": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "triageSuggestionService": {
+                            "type": "object",
+                            "properties": {
+                                "llmPublicKeySecret": {
+                                    "type": "object",
+                                    "properties": {
+                                        "name": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        },
+                                        "key": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        },
+                                        "mountPath": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        }
+                                    }
+                                },
+                                "authSecret": {
+                                    "type": "object",
+                                    "properties": {
+                                        "name": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        },
+                                        "key": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "loadBalancer": {
+                            "type": "object",
+                            "properties": {
+                                "trustedRegex": {
+                                    "type": [
+                                        "string",
+                                        "null"
+                                    ]
+                                }
+                            }
+                        },
+                        "resources": {
+                            "type": "object",
+                            "properties": {
+                                "limits": {
+                                    "type": "object",
+                                    "properties": {
+                                        "cpu": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        },
+                                        "memory": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        }
+                                    }
+                                },
+                                "requests": {
+                                    "type": "object",
+                                    "properties": {
+                                        "cpu": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        },
+                                        "memory": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "tlsSidecar": {
+                            "type": "object",
+                            "properties": {
+                                "image": {
+                                    "type": [
+                                        "string",
+                                        "null"
+                                    ]
+                                },
+                                "registry": {
+                                    "type": [
+                                        "string",
+                                        "null"
+                                    ]
+                                },
+                                "version": {
+                                    "type": [
+                                        "string",
+                                        "null"
+                                    ]
+                                },
+                                "enabled": {
+                                    "type": "boolean"
+                                },
+                                "nginxConfig": {
+                                    "type": "object",
+                                    "properties": {
+                                        "worker_processes": {
+                                            "type": "integer"
+                                        },
+                                        "worker_connections": {
+                                            "type": "integer"
+                                        },
+                                        "keepalive_timeout": {
+                                            "type": "integer"
+                                        },
+                                        "client_max_body_size": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        },
+                                        "ssl_protocols": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        },
+                                        "ssl_ciphers": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        },
+                                        "ssl_prefer_server_ciphers": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        },
+                                        "ssl_ecdh_curve": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        },
+                                        "proxy_connect_timeout": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        },
+                                        "proxy_read_timeout": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        },
+                                        "proxy_send_timeout": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "updateLicense": {
+                            "type": "object",
+                            "properties": {
+                                "enabled": {
+                                    "type": "boolean"
+                                },
+                                "force": {
+                                    "type": "boolean"
+                                }
+                            }
+                        },
+                        "adminPasswordSecret": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        }
+                    }
+                },
+                "commit-server": {
+                    "type": "object",
+                    "properties": {
+                        "replicas": {
+                            "type": "integer"
+                        },
+                        "logLevel": {
+                            "type": [
+                                "string",
+                                "null"
+                            ],
+                            "pattern": "^(ALL|TRACE|DEBUG|INFO|WARN|ERROR|FATAL|OFF|all|trace|debug|info|warn|error|fatal|off|all)$"
+                        }
+                    }
+                },
+                "ingress": {
+                    "type": "object",
+                    "properties": {
+                        "class": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "enabled": {
+                            "type": "boolean"
+                        },
+                        "path": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "ccdPath": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        }
+                    }
+                },
+                "gateway": {
+                    "type": "object",
+                    "properties": {
+                        "create": {
+                            "type": "boolean"
+                        },
+                        "enabled": {
+                            "type": "boolean"
+                        },
+                        "gatewayClassName": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "name": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "namespace": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "path": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "pathType": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "ccdPath": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "sectionName": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "clientSettings": {
+                            "type": "object",
+                            "properties": {
+                                "body": {
+                                    "type": "object",
+                                    "properties": {
+                                        "maxSize": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "healthCheck": {
+                            "type": "object",
+                            "properties": {
+                                "requestPath": {
+                                    "type": [
+                                        "string",
+                                        "null"
+                                    ]
+                                },
+                                "commitServerRequestPath": {
+                                    "type": [
+                                        "string",
+                                        "null"
+                                    ]
+                                }
+                            }
+                        },
+                        "lbConfigName": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "listeners": {
+                            "type": "object",
+                            "properties": {
+                                "http": {
+                                    "type": "object",
+                                    "properties": {
+                                        "enabled": {
+                                            "type": "boolean"
+                                        },
+                                        "port": {
+                                            "type": "integer"
+                                        },
+                                        "shared": {
+                                            "type": "boolean"
+                                        },
+                                        "redirect": {
+                                            "type": "boolean"
+                                        }
+                                    }
+                                },
+                                "https": {
+                                    "type": "object",
+                                    "properties": {
+                                        "enabled": {
+                                            "type": "boolean"
+                                        },
+                                        "port": {
+                                            "type": "integer"
+                                        },
+                                        "tlsSecretName": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        },
+                                        "shared": {
+                                            "type": "boolean"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "route": {
+                    "type": "object",
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean"
+                        },
+                        "targetPort": {
+                            "type": "integer"
+                        },
+                        "tls": {
+                            "type": "object",
+                            "properties": {
+                                "enabled": {
+                                    "type": "boolean"
+                                },
+                                "termination": {
+                                    "type": [
+                                        "string",
+                                        "null"
+                                    ]
+                                },
+                                "insecureEdgeTerminationPolicy": {
+                                    "type": [
+                                        "string",
+                                        "null"
+                                    ]
+                                }
+                            }
+                        },
+                        "wildcardPolicy": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        }
+                    }
+                },
+                "ldap": {
+                    "type": "object",
+                    "properties": {
+                        "baseDN": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "bindDN": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "bindPassword": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "displayName": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "hostName": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "updateConfig": {
+                            "type": "boolean"
+                        },
+                        "keySecret": {
+                            "type": "object",
+                            "properties": {
+                                "existingSecret": {
+                                    "type": [
+                                        "string",
+                                        "null"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                },
+                "postgres": {
+                    "type": "object",
+                    "properties": {
+                        "database": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "host": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "password": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "sslmode": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "user": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "existingSecret": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        }
+                    }
+                },
+                "setupJob": {
+                    "type": "object",
+                    "properties": {
+                        "activeDeadlineSeconds": {
+                            "type": "integer"
+                        },
+                        "createDatabases": {
+                            "type": "boolean"
+                        },
+                        "enabled": {
+                            "type": "boolean"
+                        },
+                        "resources": {
+                            "type": "object",
+                            "properties": {
+                                "limits": {
+                                    "type": "object",
+                                    "properties": {
+                                        "cpu": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        },
+                                        "memory": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        }
+                                    }
+                                },
+                                "requests": {
+                                    "type": "object",
+                                    "properties": {
+                                        "cpu": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        },
+                                        "memory": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "automountServiceAccountToken": {
+                            "type": "boolean"
+                        }
+                    }
+                },
+                "pgpool": {
+                    "type": "object",
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean"
+                        },
+                        "image": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "registry": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "version": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "replicas": {
+                            "type": "integer"
+                        },
+                        "automountServiceAccountToken": {
+                            "type": "boolean"
+                        },
+                        "resources": {
+                            "type": "object",
+                            "properties": {
+                                "limits": {
+                                    "type": "object",
+                                    "properties": {
+                                        "cpu": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        },
+                                        "memory": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        }
+                                    }
+                                },
+                                "requests": {
+                                    "type": "object",
+                                    "properties": {
+                                        "cpu": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        },
+                                        "memory": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "childLifeTime": {
+                            "type": "integer"
+                        },
+                        "childMaxConnections": {
+                            "type": "integer"
+                        },
+                        "connectionLifeTime": {
+                            "type": "integer"
+                        },
+                        "clientIdleLimit": {
+                            "type": "integer"
+                        },
+                        "connectionCache": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "cnc-db-admin": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                },
+                "automountServiceAccountToken": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "scan-services": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "triage-suggestion-service": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                },
+                "llm": {
+                    "type": "object",
+                    "properties": {
+                        "url": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "name": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        }
+                    }
+                },
+                "llmKeyEncryption": {
+                    "type": "object",
+                    "properties": {
+                        "existingSecret": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "secretKey": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        }
+                    }
+                },
+                "artifactStorage": {
+                    "type": "object",
+                    "properties": {
+                        "storageType": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "maxSize": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "uploadUrlExpiration": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "s3": {
+                            "type": "object",
+                            "properties": {
+                                "bucket": {
+                                    "type": [
+                                        "string",
+                                        "null"
+                                    ]
+                                },
+                                "region": {
+                                    "type": [
+                                        "string",
+                                        "null"
+                                    ]
+                                },
+                                "secret": {
+                                    "type": "object",
+                                    "properties": {
+                                        "name": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        }
+                                    }
+                                },
+                                "serviceAccount": {
+                                    "type": [
+                                        "string",
+                                        "null"
+                                    ]
+                                }
+                            }
+                        },
+                        "gcs": {
+                            "type": "object",
+                            "properties": {
+                                "bucket": {
+                                    "type": [
+                                        "string",
+                                        "null"
+                                    ]
+                                },
+                                "secret": {
+                                    "type": "object",
+                                    "properties": {
+                                        "key": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        },
+                                        "name": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "azure": {
+                            "type": "object",
+                            "properties": {
+                                "container": {
+                                    "type": [
+                                        "string",
+                                        "null"
+                                    ]
+                                },
+                                "storageAccountName": {
+                                    "type": [
+                                        "string",
+                                        "null"
+                                    ]
+                                },
+                                "secret": {
+                                    "type": "object",
+                                    "properties": {
+                                        "name": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "minio": {
+                            "type": "object",
+                            "properties": {
+                                "bucket": {
+                                    "type": [
+                                        "string",
+                                        "null"
+                                    ]
+                                },
+                                "region": {
+                                    "type": [
+                                        "string",
+                                        "null"
+                                    ]
+                                },
+                                "endpoint": {
+                                    "type": [
+                                        "string",
+                                        "null"
+                                    ]
+                                },
+                                "secure": {
+                                    "type": "boolean"
+                                },
+                                "pathStyle": {
+                                    "type": "boolean"
+                                },
+                                "secret": {
+                                    "type": "object",
+                                    "properties": {
+                                        "name": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "deployment": {
+                    "type": "object",
+                    "properties": {
+                        "imageRegistry": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "image": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "replicaCount": {
+                            "type": "integer"
+                        },
+                        "serviceAccount": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "resources": {
+                            "type": "object",
+                            "properties": {
+                                "requests": {
+                                    "type": "object",
+                                    "properties": {
+                                        "cpu": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        },
+                                        "memory": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        }
+                                    }
+                                },
+                                "limits": {
+                                    "type": "object",
+                                    "properties": {
+                                        "cpu": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        },
+                                        "memory": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "autoscaling": {
+                            "type": "object",
+                            "properties": {
+                                "enabled": {
+                                    "type": "boolean"
+                                }
+                            }
+                        }
+                    }
+                },
+                "workerDeployment": {
+                    "type": "object",
+                    "properties": {
+                        "imageRegistry": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "image": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "replicaCount": {
+                            "type": "integer"
+                        },
+                        "serviceAccount": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "resources": {
+                            "type": "object",
+                            "properties": {
+                                "requests": {
+                                    "type": "object",
+                                    "properties": {
+                                        "cpu": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        },
+                                        "memory": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        }
+                                    }
+                                },
+                                "limits": {
+                                    "type": "object",
+                                    "properties": {
+                                        "cpu": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        },
+                                        "memory": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "autoscaling": {
+                            "type": "object",
+                            "properties": {
+                                "enabled": {
+                                    "type": "boolean"
+                                }
+                            }
+                        }
+                    }
+                },
+                "securityContext": {
+                    "type": "object",
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean"
+                        },
+                        "runAsUser": {
+                            "type": "integer"
+                        },
+                        "runAsGroup": {
+                            "type": "integer"
+                        },
+                        "fsGroup": {
+                            "type": "integer"
+                        }
+                    }
+                },
+                "hpa": {
+                    "type": "object",
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean"
+                        },
+                        "minReplicas": {
+                            "type": "integer"
+                        },
+                        "maxReplicas": {
+                            "type": "integer"
+                        },
+                        "targetCPUUtilizationPercentage": {
+                            "type": "integer"
+                        }
+                    }
+                },
+                "workerHpa": {
+                    "type": "object",
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean"
+                        },
+                        "minReplicas": {
+                            "type": "integer"
+                        },
+                        "maxReplicas": {
+                            "type": "integer"
+                        },
+                        "targetCPUUtilizationPercentage": {
+                            "type": "integer"
+                        }
+                    }
+                },
+                "vault": {
+                    "type": "object",
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean"
+                        }
+                    }
+                },
+                "ingress": {
+                    "type": "object",
+                    "properties": {
+                        "triage-suggestion-service-ingress": {
+                            "type": "object",
+                            "properties": {
+                                "enabled": {
+                                    "type": "boolean"
+                                },
+                                "className": {
+                                    "type": [
+                                        "string",
+                                        "null"
+                                    ]
+                                },
+                                "tls": {
+                                    "type": "object",
+                                    "properties": {
+                                        "host": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        },
+                                        "secretName": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "monitoring": {
+                    "type": "object",
+                    "properties": {
+                        "serviceMonitor": {
+                            "type": "object",
+                            "properties": {
+                                "enabled": {
+                                    "type": "boolean"
+                                },
+                                "interval": {
+                                    "type": [
+                                        "string",
+                                        "null"
+                                    ]
+                                },
+                                "scrapeTimeout": {
+                                    "type": [
+                                        "string",
+                                        "null"
+                                    ]
+                                }
+                            }
+                        },
+                        "prometheusRules": {
+                            "type": "object",
+                            "properties": {
+                                "enabled": {
+                                    "type": "boolean"
+                                }
+                            }
+                        }
+                    }
+                },
+                "networkPolicy": {
+                    "type": "object",
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean"
+                        }
+                    }
+                },
+                "podDisruptionBudget": {
+                    "type": "object",
+                    "properties": {
+                        "api": {
+                            "type": "object",
+                            "properties": {
+                                "enabled": {
+                                    "type": "boolean"
+                                },
+                                "minAvailable": {
+                                    "type": "integer"
+                                }
+                            }
+                        },
+                        "worker": {
+                            "type": "object",
+                            "properties": {
+                                "enabled": {
+                                    "type": "boolean"
+                                },
+                                "minAvailable": {
+                                    "type": "integer"
+                                }
+                            }
+                        }
+                    }
+                },
+                "rabbitmq": {
+                    "type": "object",
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean"
+                        },
+                        "fullnameOverride": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "auth": {
+                            "type": "object",
+                            "properties": {
+                                "username": {
+                                    "type": [
+                                        "string",
+                                        "null"
+                                    ]
+                                },
+                                "password": {
+                                    "type": [
+                                        "string",
+                                        "null"
+                                    ]
+                                }
+                            }
+                        },
+                        "persistence": {
+                            "type": "object",
+                            "properties": {
+                                "enabled": {
+                                    "type": "boolean"
+                                },
+                                "size": {
+                                    "type": [
+                                        "string",
+                                        "null"
+                                    ]
+                                }
+                            }
+                        },
+                        "replicaCount": {
+                            "type": "integer"
+                        }
+                    }
+                },
+                "externalRabbitmq": {
+                    "type": "object",
+                    "properties": {
+                        "host": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "port": {
+                            "type": "integer"
+                        },
+                        "existingSecret": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "existingSecretKey": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "minioGateway": {
+            "type": "object",
+            "properties": {
+                "fullnameOverride": {
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "gateway": {
+                    "type": "object",
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean"
+                        },
+                        "namespace": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "name": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "path": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "pathType": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "sectionName": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "policies": {
+                            "type": "object",
+                            "properties": {
+                                "clientSettings": {
+                                    "type": "object",
+                                    "properties": {
+                                        "enabled": {
+                                            "type": "boolean"
+                                        },
+                                        "body": {
+                                            "type": "object",
+                                            "properties": {
+                                                "maxSize": {
+                                                    "type": [
+                                                        "string",
+                                                        "null"
+                                                    ]
+                                                },
+                                                "timeout": {
+                                                    "type": [
+                                                        "string",
+                                                        "null"
+                                                    ]
+                                                }
+                                            }
+                                        },
+                                        "keepAlive": {
+                                            "type": "object",
+                                            "properties": {
+                                                "timeout": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "server": {
+                                                            "type": [
+                                                                "string",
+                                                                "null"
+                                                            ]
+                                                        },
+                                                        "header": {
+                                                            "type": [
+                                                                "string",
+                                                                "null"
+                                                            ]
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                },
+                                "upstreamSettings": {
+                                    "type": "object",
+                                    "properties": {
+                                        "enabled": {
+                                            "type": "boolean"
+                                        },
+                                        "keepAlive": {
+                                            "type": "object",
+                                            "properties": {
+                                                "time": {
+                                                    "type": [
+                                                        "string",
+                                                        "null"
+                                                    ]
+                                                },
+                                                "timeout": {
+                                                    "type": [
+                                                        "string",
+                                                        "null"
+                                                    ]
+                                                }
+                                            }
+                                        },
+                                        "zoneSize": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        }
+                                    }
+                                },
+                                "snippetsFilter": {
+                                    "type": "object",
+                                    "properties": {
+                                        "enabled": {
+                                            "type": "boolean"
+                                        },
+                                        "connectTimeout": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        },
+                                        "nextUpstream": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        },
+                                        "nextUpstreamTimeout": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        },
+                                        "nextUpstreamTries": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        },
+                                        "readTimeout": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        },
+                                        "sendTimeout": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        },
+                                        "proxyBuffering": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "onPrem": {
+            "type": "object",
+            "properties": {
+                "redis": {
+                    "type": "boolean"
+                },
+                "minio": {
+                    "type": "boolean"
+                },
+                "postgres": {
+                    "type": "boolean"
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,20 @@
+{{- if and .Values.workerDeployment .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "triage-suggestion-service.fullname" . }}-worker
+  labels:
+    {{- include "triage-suggestion-service.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "triage-suggestion-service.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: worker
+  policyTypes:
+  - Egress
+  {{- if .Values.networkPolicy.worker.egress }}
+  egress:
+    {{- toYaml .Values.networkPolicy.worker.egress | nindent 2 }}
+  {{- end }}
+{{- end }}

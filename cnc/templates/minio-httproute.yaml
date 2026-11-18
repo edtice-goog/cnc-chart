@@ -1,0 +1,59 @@
+{{- if .Values.minioGateway.gateway.enabled -}}
+{{- $gatewayNamespace := .Values.minioGateway.gateway.namespace | default .Release.Namespace }}
+{{- $gatewayName := .Values.minioGateway.gateway.name | default (printf "%s-cim-gateway" .Release.Name) }}
+{{- $backendPort := .Values.minioGateway.gateway.backendPort | default 9000 }}
+
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  labels:
+    app.kubernetes.io/name: {{ .Values.minioGateway.fullnameOverride | default "minio" }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  name: {{ .Values.minioGateway.fullnameOverride | default "minio" }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  parentRefs:
+  - name: {{ $gatewayName }}
+    namespace: {{ $gatewayNamespace }}
+    {{- if .Values.minioGateway.gateway.sectionName }}
+    sectionName: {{ .Values.minioGateway.gateway.sectionName }}
+    {{- else }}
+    sectionName: http
+    {{- end }}
+  - name: {{ $gatewayName }}
+    namespace: {{ $gatewayNamespace }}
+    sectionName: https
+  {{- if or .Values.minioGateway.gateway.hostnames .Values.global.gateway.hostnames }}
+  hostnames:
+    {{- range .Values.minioGateway.gateway.hostnames | default .Values.global.gateway.hostnames }}
+    - {{ required "A valid hostname is required." . }}
+    {{- end }}
+  {{- end }}
+  rules:
+  - matches:
+    - path:
+        type: {{ .Values.minioGateway.gateway.pathType | default "PathPrefix" }}
+        value: {{ .Values.minioGateway.gateway.path | default "/upload" }}
+    filters:
+    - type: URLRewrite
+      urlRewrite:
+        path:
+          type: ReplacePrefixMatch
+          replacePrefixMatch: /
+    {{- if and .Values.minioGateway.gateway.policies .Values.minioGateway.gateway.policies.snippetsFilter .Values.minioGateway.gateway.policies.snippetsFilter.enabled }}
+    - type: ExtensionRef
+      extensionRef:
+        group: gateway.nginx.org
+        kind: SnippetsFilter
+        name: {{ .Values.minioGateway.fullnameOverride | default "minio" }}-proxy-timeouts
+    {{- end }}
+    {{- if .Values.minioGateway.gateway.filters }}
+      {{- toYaml .Values.minioGateway.gateway.filters | nindent 6 }}
+    {{- end }}
+    backendRefs:
+    - name: {{ .Values.minioGateway.fullnameOverride | default "minio" }}
+      port: {{ $backendPort }}
+      {{- if .Values.minioGateway.gateway.backendWeight }}
+      weight: {{ .Values.minioGateway.gateway.backendWeight }}
+      {{- end }}
+{{- end }}

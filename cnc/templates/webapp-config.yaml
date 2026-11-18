@@ -1,0 +1,124 @@
+{{- if .Values.cim.cimweb.enabled }}
+{{- $_ :=  set . "serviceName" "cim" }}
+{{- $_ :=  set . "ccdServiceName" "commit-server" }}
+{{- $_ :=  set . "storageServiceName" "storage-service" }}
+{{- $_ :=  set . "cacheServiceName" "cache-service" }}
+{{ $proxyTlsMode := include "proxy.tlsmode" . }}
+
+{{- include "cnc.postgres.secret" . | indent 0 }}
+---
+{{- $useTLS := or (index .Values "scan-services").enabled .Values.cim.cimweb.tlsSidecar.enabled }}
+{{- $ccdEnabled := or (and (gt (int .Values.cim.cimweb.replicas) 1) (gt (int (index .Values.cim .ccdServiceName).replicas) 0) .Values.cim.cimweb.enabled) (and .Values.cim.pgpool.enabled (gt (int .Values.cim.pgpool.replicas) 0)) }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "cnc.fullname" . }}-cim-webapp-secrets
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    helm.sh/hook: pre-upgrade, pre-install
+    "helm.sh/hook-weight": "-10"
+stringData:
+  cim.properties: |
+    accept.https=
+    catalina.connector.port=8080
+    ces.docs.home=file\:${ces.home}/webapp/doc/
+    ces.tomcat.port=8080
+    cim.doc.location=doc
+    cim.rootcontext=
+    commit.encryption=required
+    commitPort={{ .Values.cim.cimweb.commitPort }}
+    coverity.cep.binary.path=${ces.home}/webapp/checker-policy/bin/cov-checker-policy
+    db.dialect=org.hibernate.dialect.PostgreSQLDialect
+    db.driver=org.postgresql.Driver
+    dir.temp=/tmp
+    embedded_db=false
+    notification.maximum.rows=100
+    reports.base.path=${ces.home}/reports
+    reports.retention.max.count=100
+    reports.retention.max.days=30
+    pg_datadir=/
+    {{- if .Values.cim.cimweb.keystore.enabled }}
+    keystore={{ include "connect.keystore.path" . }}
+    keystore.password=Coverity
+    remoteconfig.keystore.alias={{ include "connect.keystore.alias" . }}
+    {{- end }}
+    session_cookie_name=mycookie
+    startup_caches.enable_async_load=true
+    stream.expiration.inactivity.days=28
+    sysinfo.disable=true
+    tomcat.server.port=8005
+    web.url={{ required "A valid cim web url (.Values.cim.cimweb.webUrl) entry is required." (.Values.cim.cimweb.webUrl) }}
+    keygen.enabled={{ .Values.global.keygen.enabled }}
+    trusted_proxy.regex={{ .Values.cim.cimweb.loadBalancer.trustedRegex }}
+    jobs.service.url={{ include "cnc.fullname" . }}-scan-service:9999
+    storage.service.url={{ include "cnc.fullname" . }}-storage-service:9999
+    scan.proxy.enabled={{ (index .Values "scan-services").enabled }}
+    storage.service.s3express.enabled={{ eq (index .Values "scan-services" .storageServiceName).storageType "s3Express" }}
+    scan.proxy.mtls.enabled=true
+    scan.proxy.tls.enabled={{ $useTLS }}
+    scan.proxy.cim.service.url={{ include "cnc.fullname" . }}-{{ .serviceName }}:{{ if $useTLS }}8443{{ else }}8080{{ end }}{{ if .Values.cim.cimweb.contextPath }}/{{ .Values.cim.cimweb.contextPath }}{{ end }}
+    {{- if (index .Values .serviceName).cimweb.extraProperties }}
+    {{- range $name, $value := (index .Values .serviceName).cimweb.extraProperties }}
+    {{ $name }}={{ $value }}
+    {{- end }}
+    {{- end }}
+    {{- if index .Values "triage-suggestion-service" "enabled" }}
+    {{- $tss := index .Values "triage-suggestion-service" }}
+    {{- $tsgCfg := .Values.cim.cimweb.triageSuggestionService }}
+    ai.triage.suggestion.service.url=http://triage-suggestion-service-api.{{ .Release.Namespace }}.svc.cluster.local:8080
+    show.modern.ui.preview.button=true
+    encryption.public.key.file={{ $tsgCfg.llmPublicKeySecret.mountPath }}/{{ $tsgCfg.llmPublicKeySecret.key }}
+    ai.triage.suggestion.service.auth.key=${TRIAGE_SUGGESTION_AUTH_KEY}
+    {{- end }}
+    cim.ldap.key=${CIM_LDAP_KEY}
+    maindb.name=${POSTGRES_DATABASE}
+    maindb.password=${POSTGRES_PASSWORD}
+    maindb.url={{ include "cnc.postgres.jdbcurl" . }}
+    maindb.user=${POSTGRES_USERNAME}
+    {{- if (index .Values "scan-services").enabled }}
+    scan.artifact.limit={{(index .Values "scan-services" "storage-service").fileUploadSizeLimitBytes }}
+    {{- end }}
+    cnc.cacheproxy.enabled={{ if and (index .Values "scan-services" .cacheServiceName).enabled (index .Values "scan-services").enabled }}true{{else}}false{{end}}
+    cnc.cacheproxy.proxyHost={{ include "cnc.fullname" . }}-cache-service
+    cnc.connect.enabled=true
+    truststore={{ include "connect.truststore.path" . }}
+    truststore.password=Coverity
+    infinispan.jgroups.max.threads=400
+    infinispan.jboss.tailLock=false
+    infinispan.jboss.headLock=false
+    infinispan.jgroups.cipher.pool.size=512
+    cnc.proxy.enabled={{ .Values.global.proxy.enabled }}
+    {{- if .Values.global.proxy.enabled }}
+    cnc.proxy.host={{ required "A valid proxy host entry is required." (.Values.global.proxy.host) }}
+    cnc.proxy.port={{ required "A valid proxy port entry is required." (.Values.global.proxy.port) }}
+    cnc.proxy.tlsmode={{ $proxyTlsMode }}
+    {{- if ne $proxyTlsMode "insecure" }}
+    cnc.proxy.caCert=file:/coverity/truststorecerts/proxy-server.pem
+    {{- if eq $proxyTlsMode "mtls" }}
+    cnc.proxy.clientCert=file:/opt/proxy-certs/client-cert
+    cnc.proxy.clientKey=file:/opt/proxy-certs/client-key
+    {{- end }}
+    {{- end }}
+    {{- end }}
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "cnc.fullname" . }}-cim-logging-config
+  namespace: {{ .Release.Namespace }}
+data:
+  log4j2.xml: ""
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "cnc.fullname" . }}-connect-config
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    helm.sh/hook: pre-upgrade, pre-install
+    helm.sh/hook-weight: "-20"
+data:
+  commit_url: https://{{ include "cnc.fullname" . }}-{{ if $ccdEnabled }}{{ .ccdServiceName }}{{ else }}{{ .serviceName }}{{ end }}:8443{{ if .Values.cim.cimweb.contextPath }}/{{ .Values.cim.cimweb.contextPath }}{{ end }}
+  cim_url: https://{{ include "cnc.fullname" . }}-{{ .serviceName }}:8443{{ if .Values.cim.cimweb.contextPath }}/{{ .Values.cim.cimweb.contextPath }}{{ end }}
+{{- end }}

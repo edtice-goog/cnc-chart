@@ -1,0 +1,23 @@
+apiVersion: v2
+appVersion: 1.0.0
+dependencies:
+- condition: rabbitmq.enabled
+  name: rabbitmq
+  repository: oci://registry-1.docker.io/bitnamicharts
+  version: 16.0.14
+- alias: triage-vault
+  condition: triage-vault.enabled
+  name: vault
+  repository: oci://us-docker.pkg.dev/coverity-cloud-sandbox-dev/cnc-dev/charts/hashicorp
+  version: 0.32.0
+description: Helm chart for deploying the AI triage suggestion service plug-in
+keywords:
+- ai
+- triage
+- sast
+- development
+- software
+- security
+name: triage-suggestion-service
+type: application
+version: 2026.09.16175305

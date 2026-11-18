@@ -1,0 +1,22 @@
+{{- if and .Values.cim.gateway.enabled .Values.cim.gateway.gatewayAllowedSourceRanges (eq (include "cnc.gateway.isNGF" .) "true") -}}
+{{- $fullName := include "cnc.fullname" . -}}
+{{- $gw := .Values.cim.gateway -}}
+{{- $gatewayName := $gw.name | default (printf "%s-cim-gateway" $fullName) }}
+apiVersion: gateway.nginx.org/v1alpha1
+kind: SnippetsPolicy
+metadata:
+  name: {{ $fullName }}-gateway-ip-allowlist
+  namespace: {{ $gw.namespace | default .Release.Namespace }}
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: {{ $gatewayName }}
+  snippets:
+  - context: http.server
+    value: |
+      {{- range .Values.cim.gateway.gatewayAllowedSourceRanges }}
+      allow {{ . }};
+      {{- end }}
+      deny all;
+{{- end }}

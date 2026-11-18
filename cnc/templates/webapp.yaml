@@ -1,0 +1,253 @@
+{{- $_ :=  set . "serviceName" "cim" }}
+{{- $useTLS := or (index .Values "scan-services").enabled .Values.cim.cimweb.tlsSidecar.enabled }}
+{{- $v1Openshift := .Capabilities.APIVersions.Has "security.openshift.io/v1" }}
+{{- if .Values.cim.cimweb.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  {{- if .Values.cim.cimweb.annotations }}
+  annotations:
+    {{- with .Values.cim.cimweb.annotations }}
+      {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- end }}
+  name: {{ include "cnc.fullname" . }}-{{ .serviceName }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "service.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.cim.cimweb.replicas }}
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "service.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        {{- include "cimweb.common.annotations" . | indent 8 }}
+      labels:
+        {{- include "service.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- include "cnc.securityContext.pod" . }}
+      automountServiceAccountToken: {{ (index .Values .serviceName).automountServiceAccountToken }}
+      {{- if or .Values.imagePullSecret .Values.global.imagePullSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.imagePullSecret | default .Values.global.imagePullSecret }}
+      {{- end }}
+      {{- with .Values.cim.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.cim.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.cim.tolerations | default .Values.tolerations | default .Values.global.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        {{- if $useTLS }}
+        - name: tls-sidecar
+          image: {{ include "tlsSidecar.image.name" . }}
+          imagePullPolicy: {{ .Values.imagePullPolicy | default .Values.global.imagePullPolicy }}
+          {{- include "cnc.securityContext.container" (dict "containerName" "tlsSidecar" "Values" .Values.cim.cimweb "Capabilities" .Capabilities) | indent 10 }}
+          ports:
+            {{- include "tlsSidecar.common.ports" . | indent 12 }}
+          resources:
+            limits:
+              cpu: "0.1"
+              memory: 128Mi
+            requests:
+              cpu: "0.1"
+              memory: 128Mi
+          volumeMounts:
+            {{- include "tlsSidecar.common.volumeMounts" . | indent 12 }}
+        {{- end }}
+        - name: cim-webapp
+          command: ["/coverity/cim.sh"]
+          {{- include "cnc.securityContext.container" (dict "containerName" "cimweb" "Values" .Values.cim "Capabilities" .Capabilities) | indent 10 }}
+          env:
+            {{- if and .Values.cim.pgpool.enabled (gt (int .Values.cim.pgpool.replicas) 0) }}
+            {{- include "cim.pgpool.postgres.environment" . | indent 12 }}
+            - name: PGPOOL_ENABLED
+              value: 'true'
+            {{- else }}
+            {{- include "cnc.postgres.environment" . | indent 12 }}
+            {{- end }}
+            {{- include "jgroups.service.url" . | nindent 12 }}
+            {{- include "cimweb.common.environment" . | indent 12 }}
+            - name: LOG_LEVEL
+              value: {{ .Values.cim.cimweb.logLevel }}
+            - name: COMMIT_SERVICE_URL
+              value: https://{{ include "cnc.fullname" . }}-cim:8443/ccd
+          image: {{ include "cimweb.image.name" . }}
+          imagePullPolicy: {{ .Values.imagePullPolicy | default .Values.global.imagePullPolicy }}
+          livenessProbe:
+            {{- include "cimweb.common.livenessProbe" . | indent 12 }}
+          readinessProbe:
+            {{- include "cimweb.common.readinessProbe" . | indent 12 }}
+          startupProbe:
+            {{- include "cimweb.common.startupProbe" . | indent 12 }}
+          ports:
+            {{- include "cimweb.common.ports" . | indent 12 }}
+          resources:
+            {{- toYaml .Values.cim.cimweb.resources | nindent 12 }}
+          volumeMounts:
+            {{- include "cimweb.common.volumeMounts" . | indent 12 }}
+            {{- if .Values.cim.cimweb.extraVolumeMounts }}
+            {{- toYaml .Values.cim.cimweb.extraVolumeMounts | nindent 12 }}
+            {{- end }}
+            {{- if .Values.extraVolumeMounts }}
+            {{- toYaml .Values.extraVolumeMounts | nindent 12 }}
+            {{- end }}
+            {{- if .Values.global.extraVolumeMounts }}
+            {{- toYaml .Values.global.extraVolumeMounts | nindent 12 }}
+            {{- end }}
+            {{- if index .Values "triage-suggestion-service" "enabled" }}
+            {{- $tsgCfg := .Values.cim.cimweb.triageSuggestionService }}
+            - name: triage-llm-public-key
+              mountPath: {{ $tsgCfg.llmPublicKeySecret.mountPath }}
+              readOnly: true
+            {{- end }}
+      initContainers:
+        - name: cim-docs
+          command: ["sh", "-c", "cp -r /doc/* /cimweb/docs"]
+          image: {{ include "cimdownloads.image.name" . }}
+          imagePullPolicy: {{ .Values.imagePullPolicy | default .Values.global.imagePullPolicy }}
+          {{- include "cnc.securityContext.container" (dict "containerName" "cimdownloads" "Values" .Values.cim "Capabilities" .Capabilities) | indent 10 }}
+          resources:
+            limits:
+              cpu: "0.1"
+              memory: 128Mi
+            requests:
+              cpu: "0.1"
+              memory: 128Mi
+          volumeMounts:
+            {{- include "cimdocs.common.volumeMounts" . | indent 12 }}
+          {{- if .Values.extraVolumeMounts }}
+          {{- toYaml .Values.extraVolumeMounts | nindent 12 }}
+          {{- end }}
+          {{- if .Values.global.extraVolumeMounts }}
+          {{- toYaml .Values.global.extraVolumeMounts | nindent 12 }}
+          {{- end }}
+      {{- if .Values.cim.cimweb.initContainers }}
+      {{- toYaml .Values.cim.cimweb.initContainers | nindent 8 }}
+      {{- end }}
+      {{- if .Values.cim.cimdownloads.enabled }}
+        - name: cim-downloads
+          command: ["sh", "-c", "cp /downloads/* /cimweb/downloads && cp -r /checker-policy/cov-checker-policy/. /cimweb/checker-policy/ && chmod +x /cimweb/checker-policy/bin/cov-checker-policy"]
+          image: {{ include "cimdownloads.image.name" . }}
+          imagePullPolicy: {{ .Values.imagePullPolicy | default .Values.global.imagePullPolicy }}
+          {{- include "cnc.securityContext.container" (dict "containerName" "cimdownloads" "Values" .Values.cim "Capabilities" .Capabilities) | indent 10 }}
+          resources:
+            limits:
+              cpu: "0.1"
+              memory: 128Mi
+            requests:
+              cpu: "0.1"
+              memory: 128Mi
+          volumeMounts:
+            {{- include "cimdownloads.common.volumeMounts" . | indent 12 }}
+        {{- if .Values.extraVolumeMounts }}
+        {{- toYaml .Values.extraVolumeMounts | nindent 12 }}
+        {{- end }}
+        {{- if .Values.global.extraVolumeMounts }}
+        {{- toYaml .Values.global.extraVolumeMounts | nindent 12 }}
+        {{- end }}
+      {{- end }}
+      {{- if include "isKubeVersionValid" . }}
+      {{- if .Values.global.postgres.sidecars }}
+      {{- include "common.tplvalues.render" ( dict "value" .Values.global.postgres.sidecars "context" $ ) | nindent 8 }}
+      {{- end }}
+      {{- end }}
+      volumes:
+        {{- if $useTLS }}
+        - name: nginx-cert
+          secret:
+            secretName: {{ include "cnc.fullname" . }}-cim-x509
+        {{- end }}
+        {{- if (index .Values "scan-services").enabled }}
+        - name: mtls-cert
+          secret:
+            secretName: {{ include "cnc.fullname" . }}-cim-x509
+        {{- end }}
+        {{- include "cim.common.volumes" . | indent 8 }}
+        {{- if .Values.cim.cimweb.extraVolumes }}
+        {{- toYaml .Values.cim.cimweb.extraVolumes | nindent 8 }}
+        {{- end }}
+        {{- if .Values.extraVolumes }}
+        {{- toYaml .Values.extraVolumes | nindent 8 }}
+        {{- end }}
+        {{- if .Values.global.extraVolumes }}
+        {{- toYaml .Values.global.extraVolumes | nindent 8 }}
+        {{- end }}
+        {{- if index .Values "triage-suggestion-service" "enabled" }}
+        {{- $tss := index .Values "triage-suggestion-service" }}
+        {{- $tsgCfg := .Values.cim.cimweb.triageSuggestionService }}
+        {{- $secretName := $tsgCfg.llmPublicKeySecret.name | default $tss.llmKeyEncryption.existingSecret }}
+        - name: triage-llm-public-key
+          secret:
+            secretName: {{ $secretName }}
+            items:
+            - key: {{ $tsgCfg.llmPublicKeySecret.key }}
+              path: {{ $tsgCfg.llmPublicKeySecret.key }}
+        {{- end }}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "cnc.fullname" . }}-{{ .serviceName }}
+  namespace: {{ .Release.Namespace }}
+  annotations:
+  {{- if or (eq .Values.cim.ingress.class "gce") (eq .Values.global.ingress.class "gce") }}
+    cloud.google.com/neg: '{"ingress": true}'
+  {{- end }}
+  {{- if (index .Values .serviceName).serviceAnnotations }}
+    {{- with (index .Values .serviceName).serviceAnnotations }}
+      {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- end }}
+  labels:
+    {{- include "service.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8080
+      targetPort: 8080
+      protocol: TCP
+      name: p8080
+    - port: 8443
+      targetPort: 8443
+      protocol: TCP
+      name: p8443
+    {{- if .Values.cim.cimweb.exposeCommitPort }}
+    - port: {{ .Values.cim.cimweb.commitPort }}
+      targetPort: {{ .Values.cim.cimweb.commitPort }}
+      protocol: TCP
+      name: commit
+    {{- end }}
+  selector:
+    {{- include "service.selectorLabels" . | nindent 4 }}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "cnc.fullname" . }}-cim-jgroups-svc
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "jgroups.service.selectorLabels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+    - port: 7800
+      targetPort: 7800
+      protocol: TCP
+  selector:
+    {{- include "jgroups.service.selectorLabels" . | nindent 4 }}
+{{- end }}
+

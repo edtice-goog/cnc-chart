@@ -1,0 +1,453 @@
+artifactStorage:
+  azure:
+    container: ''
+    secret:
+      name: ''
+    storageAccountName: ''
+  gcs:
+    bucket: ''
+    secret:
+      key: ''
+      name: ''
+    serviceAccountEmail: ''
+  maxSize: '209715200'
+  minio:
+    bucket: ''
+    endpoint: ''
+    pathStyle: true
+    region: ''
+    secret:
+      name: ''
+    secure: false
+  s3:
+    bucket: ''
+    region: ''
+    secret:
+      name: ''
+    serviceAccount: ''
+  storageType: ''
+  uploadUrlExpiration: 1h
+configMaps: {}
+deployment:
+  annotations:
+    prometheus.io/path: /metrics
+    prometheus.io/port: '9090'
+    prometheus.io/scrape: 'true'
+  autoscaling:
+    enabled: true
+  envVarsFromSecret: {}
+  environment:
+    AI_CONFIDENCE_THRESHOLD: '70'
+    AI_TRIAGE_ENABLED: 'true'
+    ARTIFACT_MAX_SIZE: '209715200'
+    AUTH_HMAC_SECRET_FILE: /etc/triage-suggestion-service/secrets/auth-hmac-secret
+    AUTH_KEY_FILE: /etc/triage-suggestion-service/secrets/auth-key
+    CACHE_ENABLED: 'true'
+    CACHE_TTL_HOURS: '48'
+    HTTP_PORT: '8080'
+    JWT_ENCRYPTION_KEY_FILE: /etc/triage-suggestion-service/secrets/jwt-encryption-key
+    JWT_SECRET_FILE: /etc/triage-suggestion-service/secrets/jwt-secret
+    LOG_FORMAT: json
+    LOG_LEVEL: info
+    METRICS_PORT: '9090'
+    MQ_QUEUE_NAME: triage-requests
+    MQ_USER: triage_user
+    MQ_VHOST: /
+    OBSERVABILITY_EXPOSEMETRICS: 'true'
+    OBSERVABILITY_TELEMETRY_URL: ''
+    QUEUE_TYPE: rabbitmq
+    RATE_LIMIT_ENABLED: 'true'
+    RATE_LIMIT_REQUESTS_PER_MINUTE: '1000'
+    SERVICE_MODE: api
+    STORAGE_TYPE: postgres
+    UPLOAD_URL_EXPIRATION: 1h
+    VAULT_AUTH_KUBERNETES_ROLE: triage-suggestion-service
+    VAULT_AUTH_METHOD: kubernetes
+    VAULT_DBSECRETPATH: database/creds/triage-suggestion-service
+  image: triage-suggestion-service-api
+  imageRegistry: ''
+  livenessProbe:
+    failureThreshold: 3
+    httpGet:
+      path: /liveness
+      port: 8080
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+  readinessProbe:
+    failureThreshold: 3
+    httpGet:
+      path: /readiness
+      port: 8080
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    timeoutSeconds: 3
+  replicaCount: 3
+  resources:
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+    requests:
+      cpu: 500m
+      memory: 512Mi
+  serviceAccount: triage-suggestion-service
+  strategy: RollingUpdate
+  version: 2026.9.0
+externalRabbitmq:
+  existingSecret: triage-suggestion-service-secrets
+  existingSecretKey: rabbitmq-password
+  host: rabbitmq.rabbitmq.svc.cluster.local
+  port: 5672
+  tls:
+    enabled: false
+    insecureSkipVerify: false
+    secret: ''
+externalVault:
+  addr: ''
+  authMethod: kubernetes
+  llmKeyMount: secret
+  llmKeyPrefix: triage-suggestion-service/llm-keys
+  llmKeyTTL: 24h
+  role: triage-suggestion-service
+  tokenSecret: ''
+  tokenSecretKey: token
+global:
+  annotations: {}
+  artifactStorage:
+    storageType: ''
+  environment:
+    APP_NAME: triage-suggestion-service
+    PRODUCT_MODE: CNC
+    VAULT_CLOUD_FLAG: true
+  environmentName: production
+  extraVolumeMounts: []
+  extraVolumes: []
+  imagePullPolicy: IfNotPresent
+  imagePullSecret: ''
+  imageTagSuffix: ''
+  postgres:
+    database: ''
+    existingSecret: ''
+    host: ''
+    password: ''
+    port: ''
+    sslmode: ''
+    user: ''
+  resources:
+    limits:
+      cpu: '2'
+      memory: 2Gi
+    requests:
+      cpu: 500m
+      memory: 1Gi
+  trust-stores:
+    configmapName: ''
+    enabled: false
+hpa:
+  enabled: true
+  maxReplicas: 10
+  minReplicas: 3
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+imagePullSecrets: null
+llm:
+  name: ''
+  url: ''
+llmKeyEncryption:
+  existingSecret: ''
+  secretKey: llm-key-private.pem
+monitoring:
+  prometheusRules:
+    additionalLabels: {}
+    enabled: false
+    rules:
+      - alert: HighAPIErrorRate
+        annotations:
+          summary: API error rate > 5%
+        expr: 'rate(http_requests_total{status=~"5.."}[5m]) /
+
+          rate(http_requests_total[5m]) > 0.05
+
+'
+        for: 5m
+        labels:
+          severity: warning
+      - alert: APIHighLatency
+        annotations:
+          summary: API p95 latency > 2s
+        expr: "histogram_quantile(0.95,\n  rate(http_request_duration_seconds_bucket[5m])\n) > 2\n"
+        for: 5m
+        labels:
+          severity: warning
+      - alert: RabbitMQQueueBacklog
+        annotations:
+          summary: RabbitMQ backlog > 500 messages
+        expr: rabbitmq_queue_messages_ready{queue="triage-requests"} > 500
+        for: 10m
+        labels:
+          severity: warning
+      - alert: HighWorkerFailureRate
+        annotations:
+          summary: Worker failure rate > 10%
+        expr: 'rate(worker_jobs_failed_total[5m]) /
+
+          rate(worker_jobs_processed_total[5m]) > 0.1
+
+'
+        for: 10m
+        labels:
+          severity: warning
+  serviceMonitor:
+    additionalLabels: {}
+    enabled: false
+    interval: 30s
+    scrapeTimeout: 10s
+networkPolicy:
+  api:
+    egress:
+      - ports:
+          - port: 5432
+            protocol: TCP
+        to:
+          - namespaceSelector: {}
+      - ports:
+          - port: 5672
+            protocol: TCP
+          - port: 5671
+            protocol: TCP
+        to:
+          - namespaceSelector:
+              matchLabels:
+                name: rabbitmq
+      - ports:
+          - port: 8200
+            protocol: TCP
+        to: null
+      - ports:
+          - port: 53
+            protocol: UDP
+        to:
+          - namespaceSelector:
+              matchLabels:
+                name: kube-system
+      - ports:
+          - port: 443
+            protocol: TCP
+        to: null
+  enabled: false
+  worker:
+    egress:
+      - ports:
+          - port: 5432
+            protocol: TCP
+        to:
+          - namespaceSelector: {}
+      - ports:
+          - port: 5672
+            protocol: TCP
+          - port: 5671
+            protocol: TCP
+        to:
+          - namespaceSelector:
+              matchLabels:
+                name: rabbitmq
+      - ports:
+          - port: 8200
+            protocol: TCP
+        to: null
+      - ports:
+          - port: 53
+            protocol: UDP
+        to:
+          - namespaceSelector:
+              matchLabels:
+                name: kube-system
+      - ports:
+          - port: 443
+            protocol: TCP
+        to: null
+podDisruptionBudget:
+  api:
+    enabled: false
+    minAvailable: 2
+  worker:
+    enabled: false
+    minAvailable: 3
+postgres:
+  connMaxLifetime: 600s
+  database: triage-suggestion-service
+  enabled: false
+  existingSecret: ''
+  host: ''
+  maxIdleConns: '25'
+  maxOpenConns: '50'
+  password: ''
+  port: '5432'
+  sslRootCert: /opt/postgresql/ssl/postgres-root.pem
+  sslmode: ''
+  user: ''
+rabbitmq:
+  auth:
+    erlangCookie: ''
+    password: ''
+    username: triage_user
+  enabled: false
+  fullnameOverride: triage-rabbitmq
+  global:
+    imageRegistry: ''
+  persistence:
+    enabled: true
+    size: 8Gi
+  replicaCount: 1
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 100m
+      memory: 512Mi
+securityContext:
+  enabled: true
+  fsGroup: 5000
+  runAsGroup: 5000
+  runAsUser: 5000
+serviceAccounts:
+  - name: triage-suggestion-service
+  - name: triage-suggestion-service-admin
+services:
+  - name: triage-suggestion-service-api
+    specs:
+      - name: http
+        port: 8080
+        protocol: TCP
+        targetPort: 8080
+      - name: metrics
+        port: 9090
+        protocol: TCP
+        targetPort: 9090
+    type: ClusterIP
+  - name: triage-suggestion-service-worker
+    specs:
+      - name: metrics
+        port: 9090
+        protocol: TCP
+        targetPort: 9090
+    type: ClusterIP
+standaloneDeployment: null
+triage-vault:
+  enabled: true
+  fullnameOverride: triage-suggestion-service-vault
+  injector:
+    enabled: false
+  server:
+    auditStorage:
+      enabled: false
+    authDelegator:
+      enabled: false
+    dataStorage:
+      enabled: false
+    dev:
+      devRootToken: triage-dev-root-token
+      enabled: true
+    ha:
+      enabled: false
+    image:
+      repository: us-docker.pkg.dev/coverity-cloud-sandbox-dev/cnc-dev/hashicorp/vault
+      tag: 1.21.2
+    resources:
+      limits:
+        cpu: 250m
+        memory: 256Mi
+      requests:
+        cpu: 50m
+        memory: 64Mi
+    standalone:
+      enabled: true
+  ui:
+    enabled: false
+vault:
+  dbName: triage-suggestion-service
+  db_enabled: true
+  enabled: false
+  keystore: false
+  role: triage-suggestion-service
+  secret_path: database/creds/triage-suggestion-service
+volumes:
+  enabled: true
+  pvc:
+    enabled: false
+  secrets:
+    - items:
+        - key: jwt-secret
+          path: jwt-secret
+        - key: jwt-encryption-key
+          path: jwt-encryption-key
+        - key: auth-key
+          path: auth-key
+        - key: auth-hmac-secret
+          path: auth-hmac-secret
+      mountPath: /etc/triage-suggestion-service/secrets
+      name: triage-suggestion-service-secrets
+workerDeployment:
+  annotations:
+    prometheus.io/path: /metrics
+    prometheus.io/port: '9090'
+    prometheus.io/scrape: 'true'
+  autoscaling:
+    enabled: true
+  envVarsFromSecret: {}
+  environment:
+    AI_CONFIDENCE_THRESHOLD: '70'
+    AI_TRIAGE_ENABLED: 'true'
+    ARTIFACT_RETENTION: 6h
+    ARTIFACT_STORAGE_PATH: /tmp/artifacts
+    AUTH_HMAC_SECRET_FILE: /etc/triage-suggestion-service/secrets/auth-hmac-secret
+    AUTH_KEY_FILE: /etc/triage-suggestion-service/secrets/auth-key
+    CACHE_ENABLED: 'true'
+    CACHE_TTL_HOURS: '48'
+    CLEANUP_INTERVAL: 5m
+    CLEANUP_WORK_DIRS: 'true'
+    CLI_IDLE_TIMEOUT: 120s
+    CLI_PATH: /opt/cov-triage-issue/bin/cov-triage-issue
+    CLI_TIMEOUT: 600s
+    JWT_ENCRYPTION_KEY_FILE: /etc/triage-suggestion-service/secrets/jwt-encryption-key
+    JWT_SECRET_FILE: /etc/triage-suggestion-service/secrets/jwt-secret
+    LOG_FORMAT: json
+    LOG_LEVEL: info
+    MAX_CONCURRENT_CLI: '10'
+    METRICS_PORT: '9090'
+    MQ_QUEUE_NAME: triage-requests
+    MQ_USER: triage_user
+    MQ_VHOST: /
+    MQ_WORKER_CONCURRENCY: '1'
+    OBSERVABILITY_EXPOSEMETRICS: 'true'
+    OBSERVABILITY_TELEMETRY_URL: ''
+    QUEUE_TYPE: rabbitmq
+    REQUEST_RETENTION: 24h
+    RESULTS_DIR: ''
+    RESULTS_RETENTION: 6h
+    SERVICE_MODE: worker
+    STORAGE_TYPE: postgres
+    VAULT_AUTH_KUBERNETES_ROLE: triage-suggestion-service
+    VAULT_AUTH_METHOD: kubernetes
+    VAULT_DBSECRETPATH: database/creds/triage-suggestion-service
+    WORKER_COUNT: '1'
+    WORK_DIRS: /tmp/workdirs
+  image: triage-suggestion-service-worker
+  imageRegistry: ''
+  replicaCount: 5
+  resources:
+    limits:
+      cpu: 4000m
+      memory: 8Gi
+    requests:
+      cpu: 1000m
+      memory: 2Gi
+  serviceAccount: triage-suggestion-service
+  strategy: RollingUpdate
+  version: 2026.9.0
+workerHpa:
+  enabled: true
+  maxReplicas: 20
+  minReplicas: 5
+  targetCPUUtilizationPercentage: 80

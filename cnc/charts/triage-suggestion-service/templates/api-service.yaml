@@ -1,0 +1,36 @@
+{{- if .Values.deployment }}
+{{- $apiService := dict }}
+{{- range .Values.services }}
+  {{- if eq .name "triage-suggestion-service-api" }}
+    {{- $apiService = . }}
+  {{- end }}
+{{- end }}
+{{- if $apiService.name }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $apiService.name }}
+  labels:
+    {{- include "triage-suggestion-service.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  type: {{ $apiService.type | default "ClusterIP" }}
+  ports:
+  {{- range $apiService.specs }}
+  - port: {{ .port }}
+    targetPort: {{ .targetPort }}
+    protocol: {{ .protocol | default "TCP" }}
+    name: {{ .name }}
+    {{- if $.Values.deployment }}
+    {{- if eq $apiService.type "NodePort" }}
+    {{- if .nodePort }}
+    nodePort: {{ .nodePort }}
+    {{- end }}
+    {{- end }}
+    {{- end }}
+  {{- end }}
+  selector:
+    {{- include "triage-suggestion-service.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+{{- end }}
+{{- end }}

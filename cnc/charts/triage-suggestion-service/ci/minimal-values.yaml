@@ -1,0 +1,296 @@
+# Minimal values for CI/CD helm chart verification
+# This file provides the bare minimum configuration to validate the chart
+
+# Disable standalone deployment
+standaloneDeployment: null
+
+global:
+  imagePullPolicy: IfNotPresent
+  environmentName: ci-test
+  imageTagSuffix: "-ci"
+  resources:
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+
+polaris:
+  commonEnvironment:
+    enabled: false
+
+# Services for API and Worker
+services:
+- name: triage-suggestion-service-api
+  type: ClusterIP
+  specs:
+  - name: "http"
+    port: 8080
+    protocol: "TCP"
+    targetPort: 8080
+  - name: "metrics"
+    port: 9090
+    protocol: "TCP"
+    targetPort: 9090
+- name: triage-suggestion-service-worker
+  type: ClusterIP
+  specs:
+  - name: "metrics"
+    port: 9090
+    protocol: "TCP"
+    targetPort: 9090
+
+# Artifact storage - local filesystem for CI
+artifactStorage:
+  storageType: "local"
+  storagePath: "/tmp/artifacts"
+  maxSize: "52428800"  # 50MB
+  uploadUrlExpiration: "1h"
+  s3: {bucket: "", region: "", secret: {name: ""}, serviceAccount: ""}
+  gcs: {bucket: "", secret: {key: "", name: ""}}
+  azure: {container: "", storageAccountName: "", secret: {name: ""}}
+  minio: {bucket: "", region: "", endpoint: "", secure: false, pathStyle: true, secret: {name: ""}}
+
+# Disable PVC for CI
+volumes:
+  enabled: true
+  pvc:
+    enabled: false
+
+# API Deployment
+deployment:
+  imageRegistry: ""
+  image: "triage-suggestion-service-api"
+  version: "test"
+  replicaCount: 1
+  serviceAccount: triage-suggestion-service-api
+  livenessProbe:
+    httpGet:
+      path: /liveness
+      port: 8080
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readinessProbe:
+    httpGet:
+      path: /readiness
+      port: 8080
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
+  environment:
+    # Service configuration
+    APP_NAME: "triage-suggestion-service"
+    SERVICE_MODE: "api"
+    STORAGE_TYPE: "postgres"
+    QUEUE_TYPE: "rabbitmq"
+    LOG_LEVEL: "info"
+    HTTP_PORT: "8080"
+    METRICS_PORT: "9090"
+
+    # PostgreSQL configuration
+    POSTGRES_HOST: "postgresql"
+    POSTGRES_PORT: "5432"
+    POSTGRES_DATABASE: "triage"
+    POSTGRES_SSLMODE: "disable"
+
+    # RabbitMQ configuration (MQ_HOST, MQ_PORT, MQ_PASSWORD injected by template helpers)
+    MQ_USER: "guest"
+    MQ_VHOST: "/"
+    MQ_QUEUE_NAME: "triage-requests"
+    MQ_WORKER_CONCURRENCY: 1  # Data separation - one request per pod
+
+    # Cache configuration
+    CACHE_ENABLED: "false"
+
+    # Rate limiting
+    RATE_LIMIT_ENABLED: "false"
+
+
+    # LLM configuration (API keys provided per-request via POST /auth)
+    LLM_URL: "https://llm.labs.blackduck.com"
+
+    # Telemetry
+    OBSERVABILITY_EXPOSEMETRICS: "false"
+    TELEMETRY_ENABLED: "false"
+
+  envVarsFromSecret:
+    POSTGRES_USERNAME:
+      key: postgres-user
+      name: postgres-credentials
+    POSTGRES_USER:
+      key: postgres-user
+      name: postgres-credentials
+    POSTGRES_PASSWORD:
+      key: postgres-password
+      name: postgres-credentials
+
+  resources:
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+
+# Worker Deployment
+workerDeployment:
+  imageRegistry: ""
+  image: "triage-suggestion-service-worker"
+  version: "test"
+  replicaCount: 1
+  serviceAccount: triage-suggestion-service-worker
+  environment:
+    # Service configuration
+    APP_NAME: "triage-suggestion-service"
+    SERVICE_MODE: "worker"
+    STORAGE_TYPE: "postgres"
+    QUEUE_TYPE: "rabbitmq"
+    LOG_LEVEL: "info"
+    METRICS_PORT: "9090"
+
+    # PostgreSQL configuration
+    POSTGRES_HOST: "postgresql"
+    POSTGRES_PORT: "5432"
+    POSTGRES_DATABASE: "triage"
+    POSTGRES_SSLMODE: "disable"
+
+    # Worker configuration
+    # IMPORTANT: Must be 1 for data separation
+    WORKER_COUNT: "1"
+
+    # CLI configuration
+    CLI_PATH: "/opt/cov-triage-issue/bin/cov-triage-issue"
+    CLI_TIMEOUT: "120s"
+    MAX_CONCURRENT_CLI: "5"
+    WORK_DIRS: "/tmp/workdirs"
+    RESULTS_DIR: ""
+    CLEANUP_WORK_DIRS: "true"
+
+    # RabbitMQ configuration (MQ_HOST, MQ_PORT, MQ_PASSWORD injected by template helpers)
+    MQ_USER: "guest"
+    MQ_VHOST: "/"
+    MQ_QUEUE_NAME: "triage-requests"
+    MQ_WORKER_CONCURRENCY: 1  # Data separation - one request per pod
+
+    # Cache configuration
+    CACHE_ENABLED: "false"
+
+    # Cleanup configuration
+    CLEANUP_INTERVAL: "10m"
+    REQUEST_RETENTION: "1h"
+    RESULTS_RETENTION: "30m"
+    ARTIFACT_RETENTION: "30m"
+
+    # LLM configuration (API keys provided per-request via POST /auth)
+    LLM_URL: "https://llm.labs.blackduck.com"
+
+    # Telemetry
+    OBSERVABILITY_EXPOSEMETRICS: "false"
+    TELEMETRY_ENABLED: "false"
+
+  envVarsFromSecret:
+    POSTGRES_USERNAME:
+      key: postgres-user
+      name: postgres-credentials
+    POSTGRES_USER:
+      key: postgres-user
+      name: postgres-credentials
+    POSTGRES_PASSWORD:
+      key: postgres-password
+      name: postgres-credentials
+
+  resources:
+    limits:
+      cpu: "1000m"
+      memory: "1Gi"
+    requests:
+      cpu: "200m"
+      memory: "512Mi"
+
+# Service accounts
+serviceAccounts:
+- name: triage-suggestion-service-api
+- name: triage-suggestion-service-worker
+
+# Security context
+securityContext:
+  enabled: true
+
+podSecurityPolicy:
+  enabled: false  # Disable for CI simplicity
+
+# Disable autoscaling in CI
+hpa:
+  enabled: false
+
+workerHpa:
+  enabled: false
+
+# Disable integrations
+istio:
+  enabled: false
+
+datadog:
+  enabled: false
+
+# Disable postgres - assumed external
+postgres:
+  enabled: false
+  maxOpenConns: "10"
+  maxIdleConns: "5"
+  connMaxLifetime: "300s"
+
+# Disable vault for CI
+vault:
+  enabled: false
+
+# Disable monitoring
+monitoring:
+  serviceMonitor:
+    enabled: false
+  prometheusRules:
+    enabled: false
+
+# Disable network policies for CI simplicity
+networkPolicy:
+  enabled: false
+
+# Disable pod disruption budget
+podDisruptionBudget:
+  api:
+    enabled: false
+  worker:
+    enabled: false
+
+# Disable pgbouncer
+pgbouncer:
+  enabled: false
+
+# RabbitMQ subchart for CI
+rabbitmq:
+  enabled: true
+  fullnameOverride: "triage-rabbitmq"
+  global:
+    security:
+      allowInsecureImages: true
+  auth:
+    username: guest
+    password: guest
+  persistence:
+    enabled: false
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+externalRabbitmq:
+  host: "rabbitmq"
+  port: 5672

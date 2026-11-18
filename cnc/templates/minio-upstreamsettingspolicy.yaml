@@ -1,0 +1,35 @@
+{{- if .Values.minioGateway.gateway.enabled -}}
+{{- if and .Values.minioGateway.gateway.policies .Values.minioGateway.gateway.policies.upstreamSettings .Values.minioGateway.gateway.policies.upstreamSettings.enabled -}}
+apiVersion: gateway.nginx.org/v1alpha1
+kind: UpstreamSettingsPolicy
+metadata:
+  labels:
+    app.kubernetes.io/name: {{ .Values.minioGateway.fullnameOverride | default "minio" }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  name: {{ .Values.minioGateway.fullnameOverride | default "minio" }}-upstream-settings
+  namespace: {{ .Release.Namespace }}
+spec:
+  {{- if .Values.minioGateway.gateway.policies.upstreamSettings.keepAlive }}
+  keepAlive:
+    {{- if .Values.minioGateway.gateway.policies.upstreamSettings.keepAlive.connections }}
+    connections: {{ .Values.minioGateway.gateway.policies.upstreamSettings.keepAlive.connections }}
+    {{- end }}
+    {{- if .Values.minioGateway.gateway.policies.upstreamSettings.keepAlive.requests }}
+    requests: {{ .Values.minioGateway.gateway.policies.upstreamSettings.keepAlive.requests }}
+    {{- end }}
+    {{- if .Values.minioGateway.gateway.policies.upstreamSettings.keepAlive.time }}
+    time: {{ .Values.minioGateway.gateway.policies.upstreamSettings.keepAlive.time }}
+    {{- end }}
+    {{- if .Values.minioGateway.gateway.policies.upstreamSettings.keepAlive.timeout }}
+    timeout: {{ .Values.minioGateway.gateway.policies.upstreamSettings.keepAlive.timeout }}
+    {{- end }}
+  {{- end }}
+  {{- if .Values.minioGateway.gateway.policies.upstreamSettings.zoneSize }}
+  zoneSize: {{ .Values.minioGateway.gateway.policies.upstreamSettings.zoneSize }}
+  {{- end }}
+  targetRefs:
+  - group: ""
+    kind: Service
+    name: {{ .Values.minioGateway.fullnameOverride | default "minio" }}
+{{- end }}
+{{- end }}

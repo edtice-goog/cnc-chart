@@ -1,0 +1,60 @@
+{{- if or .Values.cim.ingress.enabled .Values.global.ingress.enabled -}}
+{{- $serviceName := "cim" }}
+{{- $fullName := include "cnc.fullname" . -}}
+{{- $useTLS := or (index .Values "scan-services").enabled .Values.cim.cimweb.tlsSidecar.enabled }}
+
+{{ $path := .Values.cim.ingress.path | default .Values.global.ingress.path }}
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  annotations:
+    {{- if or (eq .Values.cim.ingress.class "nginx") (eq .Values.global.ingress.class "nginx")}}
+    nginx.ingress.kubernetes.io/backend-protocol: {{ if $useTLS }}"HTTPS"{{ else }}"HTTP"{{ end }}
+    {{- end }}
+  {{- with .Values.cim.ingress.annotations | default .Values.global.ingress.annotations }}
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  labels:
+    {{- include "service.labels" . | nindent 4 }}
+  name: {{ $fullName }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  ingressClassName: {{ .Values.cim.ingress.class | default .Values.global.ingress.class }}
+  {{- if or .Values.cim.ingress.tls .Values.global.ingress.tls }}
+  {{- if or (gt (len .Values.cim.ingress.tls) 0) (gt (len .Values.global.ingress.tls) 0)}}
+  tls:
+    {{- range .Values.cim.ingress.tls | default .Values.global.ingress.tls }}
+    - hosts:
+      {{- with .hosts }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      secretName: {{ required "A valid tls ingress secret name must be provided." .secretName }}
+    {{- end }}
+  {{- end }}
+  {{- end }}
+  rules:
+    {{ if and (eq (len .Values.cim.ingress.hosts) 0) (eq (len .Values.global.ingress.hosts) 0) }}
+    - http:
+        paths:
+          - backend:
+              service:
+                name: {{ $fullName }}-{{ $serviceName }}
+                port:
+                  number: {{ if $useTLS }}8443{{ else }}8080{{ end }}
+            path: {{ $path }}
+            pathType: ImplementationSpecific
+    {{- end }}
+    {{- range $host := .Values.cim.ingress.hosts | default .Values.global.ingress.hosts }}
+    - host: {{ required "A valid host entry is required." $host }}
+      http:
+        paths:
+          - backend:
+              service:
+                name: {{ $fullName }}-{{ $serviceName }}
+                port:
+                  number: {{ if $useTLS }}8443{{ else }}8080{{ end }}
+            path: {{ $path }}
+            pathType: ImplementationSpecific
+    {{- end }}
+{{- end }}

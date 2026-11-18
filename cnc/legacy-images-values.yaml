@@ -1,0 +1,72 @@
+# Bitnami Legacy Images Configuration
+# This file provides bitnami legacy images
+# 
+# Usage:
+#   helm install cnc ./cnc-chart -f legacy-images-values.yaml
+#   helm upgrade cnc ./cnc-chart -f legacy-images-values.yaml
+#
+
+global:
+  # Allow using bitnamilegacy images (bypass security validation)
+  security:
+    allowInsecureImages: true
+
+# Override all MinIO images to use bitnamilegacy
+minio:
+  image:
+    registry: registry-1.docker.io
+    repository: bitnamilegacy/minio
+    tag: "2025.7.23-debian-12-r3"
+  clientImage:
+    registry: registry-1.docker.io
+    repository: bitnamilegacy/minio-client
+    tag: "2025.7.21-debian-12-r2"
+  defaultInitContainers:
+    volumePermissions:
+      image:
+        registry: registry-1.docker.io
+        repository: bitnamilegacy/os-shell
+        tag: "12-debian-12-r51"
+  console:
+    image:
+      registry: registry-1.docker.io
+      repository: bitnamilegacy/minio-object-browser
+      tag: "2.0.2-debian-12-r3"
+
+# Override all Redis images to use bitnamilegacy  
+redis:
+  # Aug 22nd, 2025
+  image:
+    registry: registry-1.docker.io
+    repository: bitnamilegacy/redis
+    tag: "8.2.1-debian-12-r0"
+  # Aug 19th, 2025
+  sentinel:
+    image:
+      registry: registry-1.docker.io
+      repository: bitnamilegacy/redis-sentinel
+      tag: "8.2.1-debian-12-r0"
+  # Aug 24th, 2025
+  metrics:
+    image:
+      registry: registry-1.docker.io
+      repository: bitnamilegacy/redis-exporter
+      tag: "1.76.0-debian-12-r0"
+  # Aug 19th, 2025
+  volumePermissions:
+    image:
+      registry: registry-1.docker.io
+      repository: bitnamilegacy/os-shell
+      tag: "12-debian-12-r51"
+  # Aug 23rd, 2025
+  kubectl:
+    image:
+      registry: registry-1.docker.io
+      repository: bitnamilegacy/kubectl
+      tag: "1.33.4-debian-12-r0"
+  # Aug 19th, 2025
+  sysctl:
+    image:
+      registry: registry-1.docker.io
+      repository: bitnamilegacy/os-shell
+      tag: "12-debian-12-r51"

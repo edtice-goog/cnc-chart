@@ -1,0 +1,1468 @@
+# see https://helm.sh/docs/chart_template_guide/subcharts_and_globals/#global-chart-values
+# Global values are values that can be accessed from any chart or subchart by exactly the same name
+# these values are commonly applied for both main chart and its sub-charts if any.
+global:
+  # See https://kubernetes.io/docs/concepts/containers/images/#image-pull-policy.
+  # This is set on each CNC and scan-services pod to control its image pull policy.
+  # Allowed values: Always, IfNotPresent, Never.
+  imagePullPolicy: IfNotPresent
+
+  # See https://kubernetes.io/docs/concepts/containers/images/#specifying-imagepullsecrets-on-a-pod.
+  # This must be set if both CNC and scan-services images are pulled from a repository requiring authentication; the value
+  # must be the name of a secret in the same namespace.
+  imagePullSecret: ""
+
+  # The registry to pull Black Duck Software CNC and scan-services images from.  While these images could in principal be pulled from
+  # blackduck-repo, in practice using a private local repo will provide much faster image pulls.
+  # set this value if you want to pull both CNC and scan-services images from the same image registry.
+  #   - If you want to use a different image registry for CNC and scan-services, then:
+  #     - set imageRegistry to your CNC image registry
+  #     - set scan-services.imageRegistry to your scan-services image registry
+  imageRegistry: "repo.blackduck.com/containers"
+
+  # The common docker image tag used for all Black Duck Software CNC and scan-services images.  This can be overridden on a service-by-service
+  # basis in subordinate stanzas of the values file.
+  #   - If you want to use a different image tag for CNC and scan-services images, then:
+  #     - set imageVersion to your CNC image tag
+  #     - set scan-services.imageVersion to your scan-services image tag
+  imageVersion: "2026.9.0"
+
+  # The common suffix that appends to all Black Duck Software CNC and scan-services images tag.
+  #   - If you want to use a different suffix for CNC and scan-services images, then:
+  #     - set imageTagSuffix to your CNC image suffix
+  #     - set scan-services.imageTagSuffix to your scan-services image suffix
+  # like -ubi
+  imageTagSuffix: ""
+
+  # The name of a secret, in the same namespace, containing a valid and active Coverity OR Keygen OR both licenses.
+  #   This license is used by both Connect and Coverity Analysis.
+  #   See property scan-services.scan-service.licenseSecretName:
+  #   - If you have a license which also works for Coverity Analysis, you just need to set global.licenseSecretName
+  #   - If you are not using scan-services, you need to set only licenseSecretName
+  #   - If you are using scan-services and have two separate licenses for Connect and Analysis, then:
+  #     - set licenseSecretName to your Connect license
+  #     - set scan-services.scan-service.licenseSecretName to your Analysis license
+  #   The secret key must be "license.dat" for Coverity license and "license.json" for Keygen license.
+  # Important: Keygen is Black Duck internal use only. Do NOT use Keygen.
+  licenseSecretName: ""
+
+  # Keygen is the new organization wide licensing solution that will provide license management that is easy and frictionless for customers and internal teams.
+  # This flag will decide whether CNC will enable support for Keygen license management. By default, it is disabled.
+  # Important: Keygen is Black Duck internal use only. Do NOT enable Keygen.
+  keygen:
+    enabled: false
+
+  # See https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration.
+  # sets the tolerations on all the CNC and scan-services pods and This can be overridden on a service-by-service
+  #   - If you want to set different tolerations for CNC and scan-services pods, then:
+  #     - set tolerations to your CNC pods
+  #     - set scan-services.tolerations to your scan-services pods
+  tolerations: []
+
+  # common additional volumes to add to All CNC and scan-services pods and jobs except AnalysisJob,cleanUpJob
+  #   - If you want to set different additional volumes for CNC and scan-services pods and jobs, then:
+  #     - set extraVolumes to attach additional volumes to your CNC pods
+  #     - set scan-services.extraVolumes to attach additional volumes to your scan-services pods
+  extraVolumes: []
+
+  # common additional volumeMounts to add to All CNC and scan-services pods and jobs except AnalysisJob,cleanUpJob
+  #   - If you want to set different additional volumeMounts for CNC and scan-services pods and jobs, then:
+  #     - set extraVolumeMounts to attach additional volumeMounts to your CNC pods
+  #     - set scan-services.extraVolumeMounts to attach additional volumeMounts to your scan-services pods
+  extraVolumeMounts: []
+
+  # set these parameters if you want to use same postgres instance for both CNC and scan-services
+  # Note: the database parameter is always required to set at service level, since it is specific to the service.
+  # - if you want to use different postgres configurations for CNC and scan-services, then:
+  #   - set postgres.<parameter(s)> to configure it for CNC related services
+  #   - set scan-services.postgres.<parameter(s)> to configure it for scan-services related services
+  #   - set only postgres.<parameters> if you are not using scan-services
+  postgres:
+    host: ""
+    password: ""
+    port: 5432
+    # This has to be one of the values: "/disable/allow/prefer/require/verify-ca/verify-full"
+    database: "postgres"
+    sslmode: "verify-ca"
+    user: ""
+    # the existing k8s secret name with keys: `host`, `port`, `username`, `password`
+    existingSecret: ""
+    # this parameter will apply for both CNC and scan-services
+    # this can be overridden at chart level
+    #   set postgres.sidecars to attach to all CNC services
+    #   set scan-services.postgres.sidecars to attach to all scan-services services
+    # The container spec to attach as a sidecar for the pods which requires DB connection
+    #   it will be added as a native sidecar which is nothing but an init container with restartPolicy:Alway
+    #   so if this container wants to add as a sidecar please use restartPolicy:Always in the spec
+    #   require kubernetes 1.28 to use native-sidecar
+    #   see https://kubernetes.io/blog/2023/08/25/native-sidecar-containers/
+    sidecars: []
+
+    # this parameter will apply for both CNC and scan-services
+    # this can be overridden at chart level
+    #   set postgres.jobSidecars to attach to all CNC jobs
+    #   set scan-services.postgres.jobSidecars to attach to all scan-services jobs
+    # The container spec to attach as a sidecar for the jobs which requires DB connection
+    #   it will be added as a native sidecar which is nothing but an init container with restartPolicy:Alway
+    #   so if this container wants to add as a sidecar please use restartPolicy:Always in the spec
+    #   require kubernetes 1.28 to use native-sidecar
+    #   see https://kubernetes.io/blog/2023/08/25/native-sidecar-container
+    jobSidecars: []
+
+  # Redis related variables needed by the serverworker, storageproxy and scan-services.cache-service(if enabled)
+  # if you set these parameters at global level, then it will apply for both CNC and scan-services related services
+  # - if you want to set different configurations for CNC and scan-services, then:
+  #   - set redis.<parameter(s)> to configure it for CNC related services
+  #   - set scan-services.redis.<parameter(s)> to configure it for scan-services related services
+  #   - set only redis.<parameters> if you are not using scan-services
+  redis:
+    # Enable authentication for Redis. In case set to true, password secret also need to be provided
+    authEnabled: false
+
+    # Secret containing CA cert to be used for Redis Communication in case TLS enabled
+    # This secret must contain follwing key
+    # - ca.crt
+    cacertSecret: ""
+
+    # Redis Host
+    host: ""
+
+    # Secret containing Redis password (must contain a key named `password`) considering Redis is secured with password
+    passwordSecret: ""
+
+    # Redis Port
+    port: 6379
+
+    # If TLS enabled for communication with Redis
+    secure: true
+
+    # If Host name need to be verified for Redis communication in case TLS enabled
+    verifyHostName: false
+
+  # set this value at global level if you want to pass the same configmap for both CNC and scan-services
+  # - if want to use a different configmap for CNC and scan-services, then:
+  #   - set trust-stores.enabled and trust-stores.configmapName for CNC
+  #   - set scan-services.trust-stores.enabled and scan-services.trust-stores.configmapName for scan-services
+  #   - if you don't need scan-services, then you don't need to set scan-services.trust-stores.enabled and scan-services.trust-stores.configmapName
+  trust-stores:
+
+  # The name of the configmap containing the trust store certs.
+  # The names of all files (except postgres-root.pem, proxy-server.pem) are not important,
+  #   since they will all be mounted into the same directory, and all file
+  #   in that directory will be treated as certs and loaded into Connect's trust store.
+  #   Example of creating a configmap:
+  #   kubectl create configmap trust-stores \
+  #     --from-file=postgres-root.pem=<postgres-root.pem> \
+  #     --from-file=proxy-server.pem=<proxy-server.pem> \
+  #     --from-file=<LDAP-root-cert> \
+  #     --from-file=<Jira-root-cert> \
+  #     --from-file=<Bugzilla-root-cert> \
+  #     --namespace "$NS"
+    configmapName: "connect-trust-stores"
+    # If set to true, this will allow trust store import.
+    enabled: false
+
+  # Shared artifact/object storage configuration.
+  # When set at the global level, subcharts that read .Values.global.artifactStorage
+  # (e.g. triage-suggestion-service) automatically inherit the storage type and
+  # provider credentials without needing per-subchart configuration.
+  # Clark populates this automatically from infrastructure outputs.
+  # For manual installations, uncomment and configure the relevant provider below.
+  #
+  # artifactStorage:
+  #   storageType: ""       # "gcs", "s3", "azure", or "minio"
+  #   gcs:                  # required when storageType is "gcs"
+  #     bucket: ""
+  #     secret:
+  #       name: ""          # k8s secret containing GCP service account JSON key
+  #       key: "key.json"   # key inside the secret
+  #   s3:                   # required when storageType is "s3"
+  #     bucket: ""
+  #     region: ""
+  #     secret:
+  #       name: ""          # k8s secret with keys: aws_access_key, aws_secret_key
+  #   azure:                # required when storageType is "azure"
+  #     container: ""
+  #     storageAccountName: ""
+  #     secret:
+  #       name: ""          # k8s secret with key: azure_storage_key
+
+  # set this value at global level if you want to pass the same configmap for both CNC and scan-services
+  # - if want to use a different configmap for CNC and scan-services, then:
+  #   - set proxy.<parameter(s)> to configure it for CNC related services
+  #   - set scan-services.proxy.<parameter(s)> to configure it for scan-services related services
+  #   - set only proxy.<parameters> if you are not using scan-services
+  # The following parameters are used to connect with the forward proxy,
+  # which acts as a Man-In-The-Middle.
+  proxy:
+    # If set to true, this will ensure the request is going through it.
+    enabled: false
+    # Proxy Host
+    host: ""
+    # Proxy Port
+    port: 3128
+    # Proxy TLS mode. This has to be one of the values: "insecure/tls/mtls".
+    # Default is set to "tls"
+    # Note:
+    # - When TLS mode is set to either tls or mtls, the proxy server CA certificate must be included in the trust-stores ConfigMap with key name "proxy-server.pem".
+    # - The file names of other server CA certificates (excluding postgres, proxy server) are not important.
+    # - For eg: Blackduck artifactory server CA certificate can be named as "artifactory.pem" in the trust-stores ConfigMap.
+    tlsmode: "tls"
+    # If proxy is enabled with TLS mode set to "mtls",
+    # then this secret must be provided with keys "client-cert" and "client-key". In other cases, this secret is not required.
+    existingSecret: ""
+
+  # if ingress configuration is set at global level it will be applicable for both CNC and scan-services chart
+  # Note: if you are using both CNC and scan-services, then we recommend to set the ingress at global level
+  # configuration of Connect ingress.  If the tls sidecar nginx reverse proxy is enabled, this
+  #   will forward to https/8443; otherwise it will forward to http/8080
+  ingress:
+
+    # additional annotations to provide to the ingress object
+    annotations: {}
+
+    # value for "kubernetes.io/ingress.class" annotation key
+    class: "nginx"
+
+    # if true, a k8s ingress object is created
+    enabled: false
+
+    # array of allowed host name
+    hosts: []
+
+    # the ingress rule path
+    # notes:
+    #  - you may need to set this to "/*" for gce ingress controller
+    #  - you may need to add a path on this if using a context path
+    path: "/"
+
+    # When cim.commit-server.replicas is greater than 0, then only this ingress rule path is used to redirect the commit traffic into commit server.
+    ccdPath: "/ccd"
+
+    # array of object with schema, used to choose tls secret for https:
+    #   - secretName: ""
+    #     hosts: []
+    tls: []
+
+  gateway:
+    hostnames: []
+
+
+# See https://kubernetes.io/docs/concepts/containers/images/#image-pull-policy.
+# This is set on each CNC pod to control its image pull policy.
+# Allowed values: Always, IfNotPresent, Never.
+imagePullPolicy: ""
+
+# See https://kubernetes.io/docs/concepts/containers/images/#specifying-imagepullsecrets-on-a-pod.
+# This must be set if the CNC images are pulled from a repository requiring authentication; the value
+# must be the name of a secret in the same namespace.
+imagePullSecret: ""
+
+# The registry to pull Black Duck Software CNC images from.  While these images could in principal be pulled from
+# blackduck-repo, in practice using a private local repo will provide much faster image pulls.
+imageRegistry: ""
+
+# The docker image tag used for all Black Duck Software CNC images.  This can be overridden on a service-by-service
+# basis in subordinate stanzas of the values file.
+imageVersion: ""
+
+# The suffix that appends to all Black Duck Software CNC images tag.
+# like -ubi
+imageTagSuffix: ""
+
+# See https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration.
+# sets the tolerations on all the CNC pods
+tolerations: []
+# additional volumes to add to All CNC pods and jobs
+extraVolumes: []
+# additional volumeMounts to add to All CNC pods and jobs
+extraVolumeMounts: []
+
+# This handles Coverity connect pieces: Connect webapp, Connect admin tools, and Connect database tools.
+cim:
+
+  # sets the pod security context
+  podSecurityContext: {}
+
+  # control whether a service account token is automatically mounted into a pod
+  automountServiceAccountToken: false
+
+  # sets the affinity on the Connect deployment
+  affinity: {}
+
+  # sets the node selector on the Connect deployment
+  nodeSelector: {}
+
+  # sets the tolerations on the Connect deployment
+  tolerations: []
+
+  # additional annotations to add to the cim/commit-server service metadata.  This is a dictionary
+  serviceAnnotations: {}
+
+  # This is used to provide static files for downloads from the Connect UI.
+  # It is implemented via init containers in the cim-webapp pod and includes:
+  # - client-side binaries
+  # - documentation
+  cimdownloads:
+
+    # if true, the init container is enabled; otherwise, it is not enabled
+    enabled: true
+
+    # The image name to use
+    image: "cim-downloads"
+
+    # The image registry to use
+    registry: ""
+
+    # The image version to use
+    version: ""
+
+    # sets the container security context
+    containerSecurityContext: {}
+
+  # This creates a k8s statefulset which provides administrator functionality:
+  # - cov-archive
+  # - reset-admin-password (cov-admin-db)
+  # The statefulset is initially set to replica count 0; it must first be scaled
+  # up to create a pod before use.
+  cimtools:
+
+    # if true, the statefulset is created; otherwise, it is not
+    enabled: true
+
+    # The image name to use
+    image: "cim-tools"
+
+    # The image registry to use
+    registry: ""
+
+    # The image version to use
+    version: ""
+
+    # The k8s resource requests and limits
+    resources:
+      limits:
+        cpu: "0.5"
+        memory: 1Gi
+      requests:
+        cpu: "0.5"
+        memory: 1Gi
+
+    # (optional) a persistent volume can be created for cim-tools data
+    volume:
+      accessMode: ReadWriteOnce
+      enabled: false
+      mountPath: /data
+      storage: 1Gi
+      storageClass:
+
+    # additional volumes to add to the cim-tools pod
+    extraVolumes: []
+
+    # init containers to inject into the cim-tools pod
+    initContainers: []
+
+    # sets the container security context
+    containerSecurityContext: {}
+
+    # control whether a service account token is automatically mounted into a pod
+    automountServiceAccountToken: false
+
+  # This creates a k8s deployment which runs the Connect webapp.
+  # It also includes:
+  # - (optional) an nginx reverse proxy as a sidecar to provide TLS termination
+  # - an init container to set up configuration
+  # - an init container to set up documentation
+  # - an init container to set up downloads of client-side utilities
+  cimweb:
+    # Set cim.cimweb.replicas greater than 1 for a horizontally scaled deployment.
+    replicas: 1
+
+    keystore:
+      # If set to true, this will allow to mount keystore.
+      enabled: false
+      # The secret containing the certificate
+      certificateSecret: ""
+
+    # (optional for legacy clients -- pre 2020.12) data port used for committing defects
+    commitPort: 9090
+
+    # add context path under Coverity host
+    #   example: if this field is set to $CONTEXT_PATH, Coverity will be accessible
+    #   under https://$HOST/$CONTEXT_PATH
+    # if no context path is desired, set this to the empty string
+    contextPath: ""
+
+    # if true, exposes time series metrics in prometheus format
+    exposeMetrics: true
+
+    # if true, create k8s deployment; otherwise do not
+    enabled: true
+
+    # additional env vars injected into the container environment
+    environment: {}
+
+    # if true, opens commit port on container and service
+    exposeCommitPort: false
+
+    # additional properties to provide to Connect via its cim.properties configuration file
+    # syntax:
+    # extraProperties:
+    #   my.property.name: value
+    extraProperties: {}
+
+    # The image name to use
+    image: "cim-web"
+
+    # additional java options to add to Connect invocation
+    # Run
+    #     docker run --rm -ti us-docker.pkg.dev/coverity-cloud-sandbox-dev/cnc-dev/cim-web:COVERITY_IMAGE_VERSION cat cim.sh
+    # to see default options
+    javaOpts: ""
+
+    # log level to use
+    logLevel: "INFO"
+
+    # The image registry to use
+    registry: ""
+
+    # The image version to use
+    version: ""
+
+    # this is used as the web.url property in cim.properties.
+    # It is important to set this property correctly; otherwise features
+    # such as SAML will not work correctly.
+    webUrl: ""
+
+    # additional annotations to add to the deployment metadata.  This is a dictionary
+    annotations: {}
+
+    # additional volumes to add to the cim-webapp pod
+    extraVolumes: []
+
+    # additional volume mounts to add to the cim-webapp container
+    #   note: the volumes must be listed under 'extraVolumes"
+    extraVolumeMounts: []
+
+    # init containers to inject into the cim-webapp pod
+    initContainers: []
+
+    # Configuration for AI Triage Suggestion Service integration with Connect.
+    # Only used when triage-suggestion-service.enabled is true.
+    triageSuggestionService:
+      # Secret containing the EC P-256 public key used by Connect to encrypt LLM keys
+      # sent to triage-suggestion-service. Defaults to the secret referenced by
+      # triage-suggestion-service.llmKeyEncryption.existingSecret.
+      # The secret must contain the public key under the configured key name.
+      llmPublicKeySecret:
+        name: "triage-suggestion-service-llm-key-encryption"
+        key: "llm-key-public.pem"
+        mountPath: "/secrets/triage-llm-key-encryption"
+
+      # Secret containing the auth key used to authenticate Connect requests
+      # to triage-suggestion-service. The value is injected directly into
+      # cim.properties via environment variable substitution.
+      authSecret:
+        name: "triage-suggestion-service-secrets"
+        key: "auth-key"
+
+    # A load balancer or reverse proxy is commonly put in front of a
+    # CIM installation in order to handle TLS termination.
+    # Most load balancers and proxies add a set of headers to provide
+    # information about the original request
+    # (see https://datatracker.ietf.org/doc/html/rfc7239.html).
+    # In order to protect against forged requests CIM must be configured
+    # to trust the IP address of its load balancer(s), and so an escaped
+    # regular expression is provided to validate the proxied request's IP
+    # addresses. This is especially important for SAML, which requires extra
+    # validation for the request.
+    loadBalancer:
+      # this is used as the trusted_proxy.regex property in cim.properties
+      trustedRegex: ".*"
+
+    # additional annotations to add to the pod metadata.  This is a dictionary
+    podAnnotations: {}
+
+    # sets the container security context
+    containerSecurityContext: {}
+
+    # The k8s resource requests and limits
+    resources:
+      limits:
+        cpu: "2"
+        memory: 8Gi
+      requests:
+        cpu: "0.25"
+        memory: 1Gi
+
+    # this creates a sidecar container to provide TLS termination
+    tlsSidecar:
+
+      # The image name to use
+      image: "nginx"
+
+      # The image registry to use
+      registry: ""
+
+      # The image version to use
+      version: "1.30.4"
+
+      # this will enable the tlsSidecar
+      enabled: false
+
+      # sets the container security context
+      containerSecurityContext: {}
+
+      # Nginx configuration key-value pairs for the TLS sidecar.
+      nginxConfig:
+        # Core nginx settings
+        worker_processes: 1
+        worker_connections: 1024
+        keepalive_timeout: 65
+        client_max_body_size: "100m"
+
+        # SSL/TLS settings
+        ssl_protocols: "TLSv1.2 TLSv1.3"
+        ssl_ciphers: "AESGCM:CHACHA20:-kRSA:-aNULL"
+        ssl_prefer_server_ciphers: "on"
+        ssl_ecdh_curve: "X25519:prime256v1"
+
+        # Proxy timeout settings (with units)
+        proxy_connect_timeout: "60s"
+        proxy_read_timeout: "60s"
+        proxy_send_timeout: "60s"
+
+    # the Connect license can be updated by a k8a job
+    #   the license is from the secret named in licenseSecretName
+    updateLicense:
+
+      # if true, the license is updated; otherwise it is not
+      enabled: false
+
+      # if true, this will always update the license; otherwise, it will only update the license if necessary
+      force: false
+
+    # Secret containing Admin password (must contain a key named `password`)
+    adminPasswordSecret: ""
+
+  # To redirect all commit traffic to the commit server, set cim.cimweb.replicas greater than 1. If you need to disable it, then explicitly set cim.commit-server.replicas to 0.
+  commit-server:
+
+    # the number of replicas to create in the deployment.
+    # By default, Performance profile will get activated but,
+    # To activate the throughput profile, set cim.commit-server.replicas greater than 1.
+    replicas: 1
+
+    # log level to use
+    logLevel: "INFO"
+
+  # configuration of Connect ingress.  If the tls sidecar nginx reverse proxy is enabled, this
+  #   will forward to https/8443; otherwise it will forward to http/8080
+  ingress:
+
+    # additional annotations to provide to the ingress object
+    annotations: {}
+
+    # value for "kubernetes.io/ingress.class" annotation key
+    class: ""
+
+    # if true, a k8s ingress object is created
+    enabled: false
+
+    # array of allowed host names
+    hosts: []
+
+    # the ingress rule path
+    # notes:
+    #  - you may need to set this to "/*" for gce ingress controllers
+    #  - you may need to add a path on this if using a context path
+    path: ""
+
+    # When cim.commit-server.replicas is greater than 0, then only this ingress rule path is used to redirect the commit traffic into commit server.
+    ccdPath: ""
+
+    # array of object with schema, used to choose tls secret for https:
+    #   - secretName: ""
+    #     hosts: []
+    tls: []
+
+  gateway:
+
+    # Set to true to have Helm create the kind:Gateway resource in the cluster.
+    # Set to false if the Gateway is managed externally (default).
+    create: false
+
+    # if true, HTTPRoute objects are created for CIM
+    enabled: false
+
+    # GatewayClass name — must match an installed GatewayClass.
+    # Common values:
+    #   "nginx"                            — NGINX Gateway Fabric
+    #   "gke-l7-global-external-managed"   — GKE Global External Application Load Balancer
+    #   "gke-l7-regional-external-managed" — GKE Regional External Application Load Balancer
+    #   "gke-l7-rilb"                      — GKE Regional Internal Application Load Balancer
+    #   "azure-alb-external"               — Azure Application Load Balancer controller
+    #   "amazon-alb"                       — AWS Application Load Balancer (requires AWS Load Balancer Controller)
+    # When the class name starts with "gke-", NGF-specific resources (SnippetsFilter,
+    # SnippetsPolicy, ClientSettingsPolicy) are skipped and GKE HealthCheckPolicy resources
+    # are created. GKE Gateway API provisions NEGs automatically — no annotation needed.
+    # When the class name is "amazon-alb" or starts with "amazon-", AWS TargetGroupConfiguration
+    # resources are created for health checks. LoadBalancerConfiguration must be created manually
+    # and referenced via infrastructure.parametersRef.name.
+    gatewayClassName: "nginx"
+
+    # name of the Gateway resource.
+    # When empty, defaults to <release-name>-gateway (e.g. "coverity-gateway" for release "coverity").
+    # Override only when pointing to an external Gateway with a different name.
+    name: ""
+
+    # namespace where the Gateway resource exists (defaults to Release.Namespace)
+    namespace: ""
+
+    # array of allowed host names for the HTTPRoute and Gateway listeners
+    hostnames: []
+
+    # the route path for CIM
+    path: "/"
+
+    # path matching type: Exact, PathPrefix, or RegularExpression
+    pathType: "PathPrefix"
+
+    # the route path for commit-server (CCD) — used by commit-server-httproute.yaml
+    ccdPath: "/ccd"
+
+    # optional: specific listener section name to attach to (for multiple listeners)
+    sectionName: ""
+
+    # optional: traffic weight for canary deployments
+    backendWeight: null
+
+    # optional: raw HTTPRoute filters applied to every route rule (escape hatch for anything
+    # not covered by the named fields below).
+    # Useful for NGF SnippetsFilter proxy directives not yet covered:
+    #   proxy_connect_timeout, proxy_next_upstream, proxy_next_upstream_tries, etc.
+    filters: []
+
+    # ── IP allowlisting ────────────────────────────────────────────────────────────────────
+    # optional: per-route IP allowlist via SnippetsFilter + ExtensionRef on each HTTPRoute rule.
+    # Requires NGINX Gateway Fabric installed with --set nginxGateway.snippets.enable=true.
+    # Example: ["10.0.0.0/8", "192.168.1.0/24"]
+    allowedSourceRanges: []
+
+    # optional: gateway-level IP allowlist via SnippetsPolicy targeting the Gateway.
+    # Applies to ALL routes — no per-route config needed. Recommended for dev clusters.
+    # Requires NGINX Gateway Fabric installed with --set nginxGateway.snippets.enable=true.
+    # Example: ["10.0.0.0/8", "192.168.1.0/24"]
+    gatewayAllowedSourceRanges: []
+
+    # ── NGF ClientSettingsPolicy ───────────────────────────────────────────────────────────
+    # Maximum request body size enforced at the Gateway (client_max_body_size).
+    # Set this if you need to allow uploads larger than the NGF default (e.g. large scan results).
+    # Example: "500m", "1g"
+    clientSettings:
+      body:
+        maxSize: ""
+
+    # ── Health Check Configuration ─────────────────────────────────────────────────────
+    # Health check paths for target services.
+    # Used by GKE HealthCheckPolicy and AWS TargetGroupConfiguration resources.
+    # Both GKE and AWS ALB accept only 2xx responses as healthy. CIM returns 302 on "/"
+    # so a custom health check path is required. Defaults to /login/login.htm.
+    healthCheck:
+      # Health check path for the CIM service.
+      requestPath: "/login/login.htm"
+      # Health check path for the commit-server (CCD) service.
+      commitServerRequestPath: "/login/login.htm"
+
+    # Gateway annotations
+    # Optional annotations to add to the Gateway resource.
+    annotations: {}
+
+    # LoadBalancerConfiguration name (AWS only, ignored by GKE/NGF)
+    lbConfigName: ""
+
+    # Listener configuration — used only when cim.gateway.create=true
+    listeners:
+
+      http:
+        # if true, create an HTTP listener on the Gateway
+        enabled: true
+        # listener port
+        port: 80
+        # if true, allow HTTPRoutes from any namespace (from: All); false = same namespace only (from: Same)
+        shared: false
+        # if true, render an HTTP→HTTPS redirect HTTPRoute (301) on the http listener
+        redirect: true
+
+      https:
+        # if true, create an HTTPS listener on the Gateway
+        enabled: true
+        # listener port
+        port: 443
+        # name of the TLS Secret in Release.Namespace containing tls.crt and tls.key
+        # Required when https.enabled=true and create=true
+        tlsSecretName: ""
+        # if true, allow HTTPRoutes from any namespace (from: All); false = same namespace only (from: Same)
+        shared: false
+
+  # OpenShift Route configuration - automatically uses ingress settings
+  # Simply enable to create a route using your existing ingress configuration
+  route:
+
+    # if true, an OpenShift Route object is created
+    enabled: false
+
+    # additional annotations to provide to the route object
+    annotations: {}
+
+    # array of allowed host names. If empty, will use hosts from ingress configuration
+    hosts: []
+
+    # the target port for the route
+    targetPort: 8080
+
+    # TLS configuration for the route
+    tls:
+      # if true, TLS is enabled for the route
+      enabled: true
+
+      # TLS termination type: edge, passthrough, or reencrypt
+      termination: "edge"
+
+      # array of TLS secrets with schema (same as ingress):
+      #   - secretName: "tls-secret-name"
+      #     hosts: ["example.com"]
+      # Note: if empty, will inherit from ingress.tls configuration
+      secrets: []
+
+      # Policy for handling insecure connections: Allow, Disable, or Redirect
+      insecureEdgeTerminationPolicy: ""
+
+    # Route wildcard policy: None or Subdomain
+    wildcardPolicy: "None"
+
+  # configuration for Connect ldap functionality
+  ldap:
+    baseDN: ""
+    bindDN: ""
+    bindPassword: ""
+    displayName: ""
+    hostName: ""
+
+    updateConfig: false
+
+    # Provide the name of an existing secret containing the cim.ldap.key value under key 'key'.
+    # If not set, a secret with the default key is created automatically.
+    keySecret:
+      existingSecret: ""
+
+  # if the chart-level postgres options need to be overridden, these parameters
+  #   can be set instead.  Note: the database parameter is always required, since
+  #   it is specific to this service.
+  postgres:
+    database: “cim“
+    host: ""
+    password: ""
+    port:
+    # This has to be one of the values: ""/disable/allow/prefer/require/verify-ca/verify-full
+    sslmode: ""
+    user: ""
+    # the existing k8s secret name with keys: `host`, `port`, `username`, `password`
+    existingSecret: ""
+
+  setupJob:
+    activeDeadlineSeconds: 3600
+    createDatabases: true
+    enabled: true
+    resources:
+      limits:
+        cpu: "0.5"
+        memory: 1Gi
+      requests:
+        cpu: "0.5"
+        memory: 1Gi
+    # additional volumes to add to the cim-setup job
+    extraVolumes: []
+
+    # init containers to inject into the cim-setup job
+    initContainers: []
+
+    # sets the container security context
+    containerSecurityContext: {}
+
+    # control whether a service account token is automatically mounted into a pod
+    automountServiceAccountToken: false
+
+  # This runs pgpool server in the cluster. In beta, do not enable in production.
+  pgpool:
+    # if true, install pgpool. This is not needed to run Connect.
+    # make sure atleast one db read-replica is available.
+    # Note: It will enable commit-server and redirect all commit-defects traffic to the commit server.
+    enabled: false
+
+    # The image name to use
+    image: "pgpool"
+
+    # The image registry to use
+    registry: ""
+
+    # The image version to use
+    version: "4.6.0"
+
+    # Set cim.pgpool.replicas greater than 1 for a horizontally scaled deployment.
+    replicas: 1
+
+    # additional annotations to add to the deployment metadata.  This is a dictionary
+    annotations: {}
+
+    # sets the affinity
+    affinity: {}
+
+    # sets the tolerations
+    tolerations: []
+
+    # sets the container security context
+    containerSecurityContext: {}
+
+    # control whether a service account token is automatically mounted into a pod
+    automountServiceAccountToken: false
+
+    # sets the replica databases
+    replicadb: []
+
+    # The k8s resource requests and limits
+    resources:
+      limits:
+        cpu: "2"
+        memory: 2Gi
+      requests:
+        cpu: 250m
+        memory: 1Gi
+
+    # sets the pgpool properties
+    maxConnections:
+    childLifeTime: 300
+    childMaxConnections: 0
+    connectionLifeTime: 0
+    clientIdleLimit: 0
+    connectionCache: "on"
+
+
+# This provides a utility container which can be shelled into to use CNC database administration
+#   tools.  This is not recommended in production environments.
+cnc-db-admin:
+
+  # If true, a deployment with a replica count of 0 will be created.  The deployment will then have
+  #   to be scaled up to 1 replica.  If false, the deployment will not be created.
+  enabled: true
+
+  # additional volumes to add to the cnc-db-admin pod
+  extraVolumes: []
+
+  # init containers to inject into the cnc-db-admin pod
+  initContainers: []
+
+  # sets the container security context
+  containerSecurityContext: {}
+
+  # control whether a service account token is automatically mounted into a pod
+  automountServiceAccountToken: false
+
+
+# scan-services runs Coverity analysis in the cluster
+scan-services:
+
+  # if true, install scan-services.  This is not needed to run Connect
+  enabled: false
+
+# AI-powered microservice plug-in that provides intelligent triage suggestions for security findings.
+# This is an optional component that can be enabled independently.
+# Deploys separate API and Worker services (distributed mode).
+# Shared settings are automatically inherited from global values:
+#   global.artifactStorage  -> artifactStorage (cloud storage type + credentials)
+#   global.postgres         -> postgres (database connection)
+#   global.trust-stores     -> trust-stores (CA certificates)
+#   global.imagePullSecret  -> imagePullSecrets
+#   global.imageRegistry    -> deployment/workerDeployment imageRegistry
+#   global.imagePullPolicy  -> imagePullPolicy
+#   global.nodeSelector     -> nodeSelector
+#   global.tolerations      -> tolerations
+#   global.extraVolumes     -> additional volumes
+#   global.extraVolumeMounts -> additional volume mounts
+# You only need to set values here if they differ from the global defaults.
+# See https://gitlab.tools.duckutil.net/sat/triage-suggestion-service for full documentation.
+triage-suggestion-service:
+  # Set to true to deploy the triage-suggestion-service along with CNC
+  enabled: false
+
+  # LLM provider configuration for AI-powered triage suggestions.
+  # Note: LLM API keys are no longer configured globally. They are provided
+  # per-request by Connect via POST /auth (encrypted with ECIES).
+  llm:
+    # LLM endpoint URL (e.g., https://llm.labs.blackduck.com)
+    url: ""
+    # LLM model name (e.g., gpt-4) — optional
+    name: ""
+
+  # ECIES encryption for the llm_key field sent by Connect in POST /auth.
+  # Connect encrypts the LLM key with the service's EC P-256 public key before sending.
+  # The service decrypts it using the private key before embedding in JWE claims.
+  llmKeyEncryption:
+    # Name of the Kubernetes secret containing the EC P-256 private key (PEM format)
+    existingSecret: "triage-suggestion-service-llm-key-encryption"
+    # Key within the secret
+    secretKey: "llm-key-private.pem"
+
+  # Cloud storage backend for scan artifact uploads and downloads
+  artifactStorage:
+    # Cloud storage backend type. Must be one of: s3, gcs, azure, minio
+    storageType: ""
+    # Maximum allowed artifact upload size in bytes (default: 200MB)
+    maxSize: "209715200"
+    # Duration for which presigned upload URLs remain valid (Go duration format)
+    uploadUrlExpiration: "1h"
+    # AWS S3 configuration (required when storageType is "s3")
+    s3:
+      # S3 bucket name for storing artifacts
+      bucket: ""
+      # AWS region where the bucket is located
+      region: ""
+      # Kubernetes secret containing AWS credentials (keys: aws_access_key, aws_secret_key)
+      secret:
+        # Name of the Kubernetes secret
+        name: ""
+      # AWS IAM Role for Service Account (IRSA) name. If set, takes precedence over access keys.
+      serviceAccount: ""
+    # Google Cloud Storage configuration (required when storageType is "gcs")
+    gcs:
+      # GCS bucket name for storing artifacts
+      bucket: ""
+      # Kubernetes secret containing GCP service account credentials JSON
+      secret:
+        # Key inside the Kubernetes secret that contains the credentials file
+        key: ""
+        # Name of the Kubernetes secret
+        name: ""
+    # Azure Blob Storage configuration (required when storageType is "azure")
+    azure:
+      # Azure Blob Storage container name
+      container: ""
+      # Azure Storage account name
+      storageAccountName: ""
+      # Kubernetes secret containing Azure storage account key (key: azure_storage_key)
+      secret:
+        # Name of the Kubernetes secret
+        name: ""
+    # MinIO (S3-compatible) configuration (required when storageType is "minio")
+    minio:
+      # MinIO bucket name for storing artifacts
+      bucket: ""
+      # MinIO region
+      region: ""
+      # MinIO server endpoint URL
+      endpoint: ""
+      # Use HTTPS for MinIO connections
+      secure: false
+      # Use path-style addressing instead of virtual-hosted-style
+      pathStyle: true
+      # Kubernetes secret containing MinIO credentials (keys: root-user, root-password)
+      secret:
+        # Name of the Kubernetes secret
+        name: ""
+
+  # API deployment configuration
+  deployment:
+    # Container image registry for the API image
+    imageRegistry: ""
+    # Container image name for the API service
+    image: "triage-suggestion-service-api"
+    # Number of API pod replicas (ignored when hpa.enabled is true)
+    replicaCount: 3
+    # Kubernetes service account name for the API pods
+    serviceAccount: triage-suggestion-service
+    # Resource requests and limits for API pods
+    resources:
+      requests:
+        cpu: "500m"
+        memory: "512Mi"
+      limits:
+        cpu: "2000m"
+        memory: "2Gi"
+    # Enable Horizontal Pod Autoscaler for the API deployment
+    autoscaling:
+      enabled: true
+
+  # Worker deployment configuration
+  workerDeployment:
+    # Container image registry for the Worker image
+    imageRegistry: ""
+    # Container image name for the Worker service
+    image: "triage-suggestion-service-worker"
+    # Number of Worker pod replicas (ignored when workerHpa.enabled is true)
+    replicaCount: 5
+    # Kubernetes service account name for the Worker pods
+    serviceAccount: triage-suggestion-service
+    # Resource requests and limits for Worker pods (workers need more resources for CLI execution)
+    resources:
+      requests:
+        cpu: "1000m"
+        memory: "2Gi"
+      limits:
+        cpu: "4000m"
+        memory: "8Gi"
+    # Enable Horizontal Pod Autoscaler for the Worker deployment
+    autoscaling:
+      enabled: true
+
+  # Pod security context applied to all triage-suggestion-service pods
+  securityContext:
+    # Enable pod security context
+    enabled: true
+    # User ID to run the container processes as
+    runAsUser: 5000
+    # Group ID to run the container processes as
+    runAsGroup: 5000
+    # Group ID for filesystem ownership of mounted volumes
+    fsGroup: 5000
+
+  # Horizontal Pod Autoscaler for the API deployment
+  hpa:
+    # Enable HPA for the API deployment
+    enabled: true
+    # Minimum number of API pod replicas
+    minReplicas: 3
+    # Maximum number of API pod replicas
+    maxReplicas: 10
+    # Target average CPU utilization percentage that triggers scaling
+    targetCPUUtilizationPercentage: 70
+
+  # Horizontal Pod Autoscaler for the Worker deployment
+  workerHpa:
+    # Enable HPA for the Worker deployment
+    enabled: true
+    # Minimum number of Worker pod replicas
+    minReplicas: 5
+    # Maximum number of Worker pod replicas
+    maxReplicas: 20
+    # Target average CPU utilization percentage that triggers scaling
+    targetCPUUtilizationPercentage: 80
+
+  # PostgreSQL connection configuration (overrides global.postgres for this service)
+  postgres:
+    # Enable PostgreSQL connection configuration injection
+    enabled: false
+    # PostgreSQL server hostname
+    host: ""
+    # PostgreSQL server port
+    port: "5432"
+    # PostgreSQL username
+    user: ""
+    # PostgreSQL password
+    password: ""
+    # PostgreSQL database name
+    database: "triage-suggestion-service"
+    # PostgreSQL SSL mode. Allowed values: disable, allow, prefer, require, verify-ca, verify-full
+    sslmode: ""
+    # Name of an existing Kubernetes secret for PostgreSQL credentials (keys: host, port, username, password)
+    existingSecret: ""
+
+  # Vault integration for dynamic database credentials
+  vault:
+    # Enable Vault-based dynamic database credential injection
+    enabled: false
+
+  # Kubernetes Ingress configuration for the API service
+  ingress:
+    triage-suggestion-service-ingress:
+      # Enable the Ingress resource
+      enabled: true
+      # Ingress class name (e.g., nginx, traefik)
+      className: ""
+      # TLS configuration for HTTPS termination at the Ingress
+      tls:
+        # Hostname for TLS certificate matching
+        host: ""
+        # Name of the Kubernetes secret containing the TLS certificate and key
+        secretName: ""
+
+  # Prometheus monitoring configuration
+  monitoring:
+    # ServiceMonitor for Prometheus Operator
+    serviceMonitor:
+      # Enable ServiceMonitor resource creation
+      enabled: false
+      # Scrape interval for metrics collection
+      interval: 30s
+      # Maximum time Prometheus waits for a scrape response
+      scrapeTimeout: 10s
+    # PrometheusRule for alerting
+    prometheusRules:
+      # Enable PrometheusRule resource creation
+      enabled: false
+
+  # Kubernetes NetworkPolicy configuration
+  networkPolicy:
+    # Enable NetworkPolicy resources for the API and Worker deployments
+    enabled: false
+
+  # PodDisruptionBudget configuration
+  podDisruptionBudget:
+    # PDB for the API deployment
+    api:
+      # Enable PodDisruptionBudget for the API deployment
+      enabled: false
+      # Minimum number of API pods that must remain available during disruptions
+      minAvailable: 2
+    # PDB for the Worker deployment
+    worker:
+      # Enable PodDisruptionBudget for the Worker deployment
+      enabled: false
+      # Minimum number of Worker pods that must remain available during disruptions
+      minAvailable: 3
+
+  # Bundled RabbitMQ subchart configuration (Bitnami)
+  rabbitmq:
+    # Deploy the bundled RabbitMQ subchart. Set to false to use externalRabbitmq instead.
+    enabled: true
+    # Override the RabbitMQ release name for consistent service discovery
+    fullnameOverride: "triage-rabbitmq"
+    # RabbitMQ authentication credentials
+    auth:
+      # RabbitMQ username
+      username: triage_user
+      # RabbitMQ password. Auto-generated by the Bitnami chart if left empty.
+      password: ""
+    # RabbitMQ data persistence configuration
+    persistence:
+      # Enable persistent storage for RabbitMQ data
+      enabled: true
+      # Size of the persistent volume for RabbitMQ data
+      size: 8Gi
+    # Number of RabbitMQ pod replicas
+    replicaCount: 1
+
+  # External RabbitMQ connection settings (used when rabbitmq.enabled is false)
+  externalRabbitmq:
+    # Hostname of the external RabbitMQ server
+    host: ""
+    # AMQP port of the external RabbitMQ server
+    port: 5672
+    # Name of a Kubernetes secret containing the RabbitMQ password
+    existingSecret: ""
+    # Key within the Kubernetes secret that contains the RabbitMQ password
+    existingSecretKey: ""
+
+# MinIO gateway configuration — maps to minio.gateway used by templates
+minioGateway:
+  fullnameOverride: ""
+  gateway:
+    # Set to true to create HTTPRoute + NGF policies for MinIO upload routing
+    # Disable minio.ingress.enabled when using Gateway API (they are mutually exclusive)
+    enabled: false
+
+    # Gateway resource name and namespace
+    namespace: ""
+    name: ""
+
+    # Optional hostname for the HTTPRoute
+    hostnames: []
+
+    # MinIO upload path
+    path: "/upload"
+
+    # Path matching type
+    pathType: "PathPrefix"
+
+    # Backend port for MinIO service
+    backendPort:
+
+    # Optional section name for the listener
+    sectionName: ""
+
+    # Optional backend weight for canary deployments
+    backendWeight: null
+
+    # Optional filters for the HTTPRoute
+    filters: []
+
+    # Policies for MinIO gateway
+    policies:
+      # ClientSettingsPolicy — request body size + keep-alive for upload connections
+      clientSettings:
+        # Enable ClientSettingsPolicy
+        enabled: false
+        body:
+          # Maximum allowed request body size for MinIO uploads (e.g. "8g", "500m")
+          maxSize: ""
+          # Body receive timeout;
+          timeout: ""
+        keepAlive:
+          # Maximum keep-alive requests per connection
+          requests:
+          timeout:
+            # Keep-alive timeout on the server side
+            server: ""
+            # Keep-alive header timeout sent to clients
+            header: ""
+
+      # UpstreamSettingsPolicy — connection pooling to the MinIO backend Service
+      upstreamSettings:
+        # Enable UpstreamSettingsPolicy
+        enabled: false
+        keepAlive:
+          # Maximum number of idle keep-alive connections to MinIO
+          connections:
+          # Maximum requests per keep-alive connection before it is closed
+          requests:
+          # How long a keep-alive connection stays open
+          time: ""
+          # Idle timeout before closing a keep-alive connection
+          timeout: ""
+        # Shared memory zone size for upstream state
+        zoneSize: ""
+
+      # SnippetsFilter — NGINX proxy directives injected into the MinIO route location
+      snippetsFilter:
+        # Set to true only when NGF is running with snippets enabled
+        enabled: false
+        # Time to wait for a connection to MinIO to be established
+        connectTimeout: ""
+        # Conditions under which the request is passed to the next upstream
+        nextUpstream: ""
+        # Timeout for passing the request to the next upstream
+        nextUpstreamTimeout: ""
+        # Number of next-upstream retries
+        nextUpstreamTries: ""
+        # Timeout for reading a response from MinIO
+        readTimeout: ""
+        # Timeout for sending a request to MinIO
+        sendTimeout: ""
+        # Disable response buffering for large file uploads/downloads
+        proxyBuffering: ""
+
+# This will be utilized for on-cluster configuration
+onPrem:
+  # whether to enable the on-cluster Redis
+  redis: false
+  # whether to enable the on-cluster Minio
+  minio: false
+
+  postgres: false
+
+# onPrem helm overrides for open-source sub-charts
+# redis:
+#   global:
+#     security:
+#       allowInsecureImages: true
+#   fullnameOverride: "cache-redis"
+#   architecture: standalone
+#   image:
+#     registry: registry-1.docker.io
+#     repository: redis
+#     tag: "8.6.4"
+#   metrics:
+#    enabled: true
+#    image:
+#      registry: registry-1.docker.io
+#      repository: oliver006/redis_exporter
+#      tag: "v1.86.0"
+#    command:
+#        - "/redis_exporter"
+#    args:
+#      - "--redis.addr=rediss://127.0.0.1:6379"
+#      - "--redis.password=$(REDIS_PASSWORD)"  # Remove this if global.redis.authEnabled is false
+#    extraEnvVars:  # Remove this entire block if global.redis.authEnabled is false
+#        - name: REDIS_PASSWORD
+#          valueFrom:
+#            secretKeyRef:
+# # The secret name must match the actual Redis password secret created by the chart.
+#              name: redis-password
+# # The secret key must match the actual Redis password key set in the secret.
+#              key: password
+#   volumePermissions:
+#     image:
+#       registry: registry-1.docker.io
+#       repository: alpine
+#       tag: "3.21.7"
+#   kubectl:
+#     image:
+#       registry: registry-1.docker.io
+#       repository: alpine/kubectl
+#       tag: "1.36.2"
+#   sysctl:
+#     image:
+#       registry: registry-1.docker.io
+#       repository: alpine
+#       tag: "3.21.7"
+#   master:
+#     persistence:
+#       enabled: false
+#     resources:
+#       limits:
+#         cpu: "0.5"
+#         memory: 1.1Gi
+#       requests:
+#         cpu: "0.5"
+#         memory: 1.1Gi
+#   tls:
+#     enabled: true
+#     autoGenerated: true
+#     certFilename: "certificate.pem"
+#     certKeyFilename: "key.pem"
+#     certCAFilename: "ca.crt"
+#     authClients: false
+#   # please modify/override below configurations to increase the maxmemory for redis
+#   commonConfiguration: |-
+#     save ""
+#     appendonly no
+#     maxmemory 1gb
+#     maxmemory-policy noeviction
+
+# minio:
+#   global:
+#     security:
+#       allowInsecureImages: true
+#   fullnameOverride: "cnc-minio"
+#   # MinIO Server - July 23rd, 2025
+#   image:
+#     registry: registry-1.docker.io
+#     repository: bitnamilegacy/minio
+#     tag: "2025.7.23-debian-12-r3"
+#     debug: true
+#   # MinIO Client - July 21st, 2025
+#   clientImage:
+#     registry: registry-1.docker.io
+#     repository: bitnamilegacy/minio-client
+#     tag: "2025.7.21-debian-12-r2"
+#   # Default Init Containers Volume Permissions
+#   defaultInitContainers:
+#     volumePermissions:
+#       image:
+#         registry: registry-1.docker.io
+#         repository: bitnamilegacy/os-shell
+#         tag: "12-debian-12-r51"
+#   # Console/Gateway Image
+#   console:
+#     image:
+#       registry: registry-1.docker.io
+#       repository: bitnamilegacy/minio-object-browser
+#       tag: "2.0.2-debian-12-r3"
+#   ingress:
+#     enabled: true
+#     ingressClassName: nginx
+#     hostname: local.connect.example.com
+#     extraTls:
+#     - hosts:
+#         - local.connect.example.com
+#       secretName: cnc-cim-tls-nginx
+#     path: "/upload(/|$)(.*)"
+#     annotations:
+#       ingress.kubernetes.io/hsts: "true"
+#       ingress.kubernetes.io/ssl-redirect: "true"
+#       nginx.ingress.kubernetes.io/enable-access-log: "true"
+#       nginx.ingress.kubernetes.io/proxy-body-size: 8g
+#       nginx.ingress.kubernetes.io/proxy-connect-timeout: "5"
+#       nginx.ingress.kubernetes.io/proxy-next-upstream: error timeout
+#       nginx.ingress.kubernetes.io/proxy-next-upstream-timeout: "0"
+#       nginx.ingress.kubernetes.io/proxy-next-upstream-tries: "3"
+#       nginx.ingress.kubernetes.io/rewrite-target: /$2
+
+#   podAnnotations:
+#     prometheus.io/scrape: "true"
+#     prometheus.io/path: "/minio/v2/metrics/cluster"
+#     prometheus.io/port: "9000"
+#   persistence:
+#     size: 50Gi
+
+#   # This sidecar is needed when the cache-service is enabled which will set the lifecycle configuration for the cache-service bucket
+#   #   This sidecar needs a secret with key minio-access-key, minio-secret-key which will be created by minio helm chart itself with minio release name
+#   #   Please update the cache_bucket_name, retention-days and other env's accordingly
+#   sidecars:
+#     - name: minio-lifecycle
+#       image: registry-1.docker.io/bitnamilegacy/minio-client:2025.7.21-debian-12-r2
+#       imagePullPolicy: IfNotPresent
+#       env:
+#         - name: cache_bucket_name
+#           value: coverity-cache
+#         - name: cache-retention-limit
+#           value: "30"
+#         - name: minio-host
+#           value: cnc-minio
+#         - name: minio-port
+#           value: "9000"
+#         - name: minio-access-key
+#           valueFrom:
+#             secretKeyRef:
+#               name: cnc-minio
+#               key: root-user
+#         - name: minio-secret-key
+#           valueFrom:
+#             secretKeyRef:
+#               name: cnc-minio
+#               key: root-password
+#       command: ["/bin/bash","-c"]
+#       args:
+#         - |
+#           echo "waiting for minio..."
+
+#           until (mc alias set cnc http://$(minio-host):$(minio-port) $(minio-access-key) $(minio-secret-key) && mc ls cnc/$(CACHE_BUCKET_NAME))
+#           do sleep 5;
+#           done;
+#           mc ilm add --expiry-days $(cache-retention-limit) cnc/$(cache_bucket_name);
+#           tail -f /dev/null;
+
+# postgresql:
+#   primary:
+#     pgHbaConfiguration: |
+#       local   all             all                               md5
+#       host    all             all             0.0.0.0/0         md5
+#       host    all             all             ::/0              md5
+#       host    all             all             127.0.0.1/32      md5
+#       host    all             all             ::1/128           md5
+#     args:
+#       - "-c"
+#       - "hba_file=/bitnami/postgresql/conf/pg_hba.conf"
+#       # Comment these if TLS is to be disabled. Ensure the certificate filenames
+#       # in ssl_cert_file and ssl_key_file match the certFilename and certKeyFilename
+#       # specified in the tls section below if tls is enabled (currently: certificate.pem and key.pem)
+#       - "-c"
+#       - "ssl=on"
+#       - "-c"
+#       - "ssl_cert_file=/opt/bitnami/postgresql/certs/certificate.pem"
+#       - "-c"
+#       - "ssl_key_file=/opt/bitnami/postgresql/certs/key.pem"
+#     extraVolumes:
+#       - name: postgres-run
+#         emptyDir: { }
+#     extraVolumeMounts:
+#       - name: postgres-run
+#         mountPath: /var/run/postgresql
+#   commonAnnotations:
+#     helm.sh/hook: "pre-install, pre-upgrade, pre-rollback"
+#     helm.sh/hook-weight: "-13"
+#   fullnameOverride: "cim-pg-postgresql"
+#   auth:
+#     database: "postgres"
+#     postgresPassword: "postgres"
+#   image:
+#     registry: registry-1.docker.io
+#     repository: "postgres"
+#     tag: "18.4"
+#     pullSecrets: ["gar-key"]
+#   metrics:
+#     enabled: true
+#     image:
+#       registry: registry-1.docker.io
+#       repository: "prometheuscommunity/postgres-exporter"
+#       tag: "v0.19.1"
+#   volumePermissions:
+#     enabled: true
+#     image:
+#       registry: registry-1.docker.io
+#       repository: "alpine"
+#       tag: "3.21.7"
+#   tls:
+#     enabled: true
+#     certFilename: "certificate.pem"
+#     certKeyFilename: "key.pem"
+#     certificatesSecret: "postgres-certificates-tls-secret"

@@ -1,0 +1,50 @@
+{{- if and .Values.cim.pgpool.enabled (gt (int .Values.cim.pgpool.replicas) 0) -}}
+{{- $maxconnections := required "A valid maxConnections entry is required." .Values.cim.pgpool.maxConnections -}}
+{{- if not (and .Values.cim.pgpool.replicadb (gt (len .Values.cim.pgpool.replicadb) 0)) }}
+{{- fail "A valid db replicas list must be provided." }}
+{{- end }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "cnc.fullname" . }}-cim-pgpool-config
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    helm.sh/hook: pre-upgrade, pre-install
+    helm.sh/hook-weight: "-10"
+stringData:
+  pgpool.conf: |
+    listen_addresses = '*'
+    port = 9999
+    {{- $sslmode := .Values.cim.postgres.sslmode | default .Values.global.postgres.sslmode }}
+    {{- if ne $sslmode "disable" }}
+    ssl = on
+    ssl_ca_cert = '/coverity/truststorecerts/postgres-root.pem'
+    {{- end }}
+    backend_hostname0 = {{ .Values.cim.postgres.host | default .Values.global.postgres.host | squote }}
+    backend_port0 = {{ .Values.cim.postgres.port | default .Values.global.postgres.port | squote }}
+    backend_weight0 = '0.2'
+    backend_flag0 = 'ALWAYS_PRIMARY'
+    {{- range $index, $replicas := .Values.cim.pgpool.replicadb }}
+    backend_hostname{{ add $index 1 }} = {{ $replicas.name | squote }}
+    backend_port{{ add $index 1 }} = {{ $replicas.port | squote }}
+    backend_weight{{ add $index 1 }} = '0.8'
+    backend_flag{{ add $index 1 }} = 'DISALLOW_TO_FAILOVER'
+    {{- end }}
+    sr_check_period = 0
+    enable_pool_hba = 'on'     
+    num_init_children = {{ .Values.cim.pgpool.maxConnections }}
+    max_pool = 1
+    child_life_time = {{ .Values.cim.pgpool.childLifeTime }}
+    child_max_connections = {{ .Values.cim.pgpool.childMaxConnections }}
+    connection_life_time = {{ .Values.cim.pgpool.connectionLifeTime }}
+    client_idle_limit = {{ .Values.cim.pgpool.clientIdleLimit }}
+    connection_cache = {{ .Values.cim.pgpool.connectionCache | squote }}
+    load_balance_mode = 'on'
+    statement_level_load_balance = '{{ if gt (len .Values.cim.pgpool.replicadb) 1 }}on{{ else }}off{{ end }}'
+    primary_routing_query_pattern_list = '.*license_file.*;.*qrtz_triggers.*'
+  pool_hba.conf: |-
+    local   all         all                               trust
+    host    all         all         127.0.0.1/32          trust
+    host    all         all         ::1/128               trust
+    host    all         all         0.0.0.0/0             md5
+{{ end }}

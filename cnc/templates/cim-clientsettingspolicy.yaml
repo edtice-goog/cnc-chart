@@ -1,0 +1,21 @@
+{{- if and .Values.cim.gateway.enabled (eq (include "cnc.gateway.isNGF" .) "true") -}}
+{{- $cs := .Values.cim.gateway.clientSettings | default dict -}}
+{{- $body := $cs.body | default dict -}}
+{{- if $body.maxSize -}}
+{{- $fullName := include "cnc.fullname" . -}}
+{{- $gw := .Values.cim.gateway -}}
+{{- $gatewayName := $gw.name | default (printf "%s-cim-gateway" $fullName) }}
+apiVersion: gateway.nginx.org/v1alpha1
+kind: ClientSettingsPolicy
+metadata:
+  name: {{ $fullName }}-client-settings
+  namespace: {{ .Release.Namespace }}
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: {{ $gatewayName }}
+  body:
+    maxSize: {{ $body.maxSize | quote }}
+{{- end }}
+{{- end }}

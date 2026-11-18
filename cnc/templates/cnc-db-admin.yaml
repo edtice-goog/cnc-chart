@@ -1,0 +1,90 @@
+{{- if (index .Values "cnc-db-admin").enabled -}}
+{{- $_ :=  set . "serviceName" "cnc-db-admin" }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "cnc.fullname" . }}-cnc-db-admin
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: 0
+  selector:
+    matchLabels:
+      {{- include "service.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "service.selectorLabels" . | nindent 8 }}
+    spec:
+      automountServiceAccountToken: {{ (index .Values .serviceName).automountServiceAccountToken }}
+      {{- include "cnc.securityContext.pod" . }}
+      {{- if or .Values.imagePullSecret .Values.global.imagePullSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.imagePullSecret | default .Values.global.imagePullSecret }}
+      {{- end }}
+      {{- with .Values.cim.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.cim.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.cim.tolerations | default .Values.tolerations | default .Values.global.tolerations}}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if or (index .Values "cnc-db-admin").initContainers .Values.global.postgres.sidecars}}
+      initContainers:
+      {{- if (index .Values "cnc-db-admin").initContainers }}
+      {{- include "common.tplvalues.render" ( dict "value" (index .Values "cnc-db-admin").initContainers "context" $ ) | nindent 8 }}
+      {{- end }}
+      {{- if include "isKubeVersionValid" . }}
+      {{- if .Values.global.postgres.sidecars }}
+      {{- include "common.tplvalues.render" ( dict "value" .Values.global.postgres.sidecars "context" $ ) | nindent 8 }}
+      {{- end }}
+      {{- end }}
+      {{- end }}
+      containers:
+        - name: cnc-db-admin-sleep
+          image: {{ printf "%s/%s:%s%s" (required "A valid image registry entry is required." (.Values.cim.cimtools.registry | default .Values.imageRegistry | default .Values.global.imageRegistry )) (required "A valid image name (.Values.cim.cimtools.image) entry is required." .Values.cim.cimtools.image ) (.Values.cim.cimtools.version | default .Values.imageVersion | default .Values.global.imageVersion) (.Values.imageTagSuffix| default .Values.global.imageTagSuffix) | quote }}
+          imagePullPolicy: {{ .Values.imagePullPolicy | default .Values.global.imagePullPolicy }}
+          command: ["/bin/sleep", "infinity"]
+          {{- include "cnc.securityContext.container" (dict "containerName" "cnc-db-admin" "Values" .Values "Capabilities" .Capabilities) | indent 10 }}
+          env:
+            # Set serviceName as cim to add db related envs
+            {{- $_ :=  set . "serviceName" "cim" }}
+            {{- include "cnc.postgres.environment" . | indent 12 }}
+            # Revert serviceName to cnc-db-admin
+            {{- $_ :=  set . "serviceName" "cnc-db-admin" }}
+            - name: PGHOST
+              value: $(POSTGRES_HOST)
+            - name: PGPORT
+              value: $(POSTGRES_PORT)
+            - name: PGUSER
+              value: $(POSTGRES_USERNAME)
+            - name: PGPASSWORD
+              value: $(POSTGRES_PASSWORD)
+            - name: PGDATABASE
+              value: $(POSTGRES_DATABASE)
+          volumeMounts:
+          - name: workdir
+            mountPath: /workdir
+          {{- if .Values.extraVolumeMounts }}
+          {{- toYaml .Values.extraVolumeMounts | nindent 10 }}
+          {{- end }}
+          {{- if .Values.global.extraVolumeMounts }}
+          {{- toYaml .Values.global.extraVolumeMounts | nindent 10 }}
+          {{- end }}
+      volumes:
+        - name: workdir
+          emptyDir: {}
+      {{- if (index .Values "cnc-db-admin").extraVolumes }}
+      {{- toYaml (index .Values "cnc-db-admin").extraVolumes | nindent 8 }}
+      {{- end }}
+      {{- if .Values.extraVolumes }}
+      {{- toYaml .Values.extraVolumes | nindent 8 }}
+      {{- end }}
+      {{- if .Values.global.extraVolumes }}
+      {{- toYaml .Values.global.extraVolumes | nindent 8 }}
+      {{- end }}
+  {{ end }}

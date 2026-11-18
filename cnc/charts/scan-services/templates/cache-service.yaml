@@ -1,0 +1,226 @@
+{{- $_ :=  set . "serviceName" "cache-service" }}
+{{- if (index .Values .serviceName).enabled -}}
+{{- $instanceProfileEnabled := and (eq (index .Values .serviceName).storageProvider "aws") (ne (index .Values .serviceName).aws.serviceAccount "") }}
+---
+{{- if not $instanceProfileEnabled }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "scan-services.fullname" . }}-{{ .serviceName }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+{{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "scan-services.fullname" . }}-{{ .serviceName }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "service.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: 8443
+      protocol: TCP
+      targetPort: 8443
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: {{ include "scan-services.fullname" . }}-{{ .serviceName }}
+  {{- if (index .Values .serviceName).annotations }}
+  annotations:
+    {{- with (index .Values .serviceName).annotations }}
+      {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- end }}
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "service.selectorLabels" . | nindent 6 }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: "100%"
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        {{- include "service.selectorLabels" . | nindent 8 }}
+      annotations:
+        checksum/connect-config: {{ include "scan-services.connectConfig.resourceVersion" . | sha256sum }}
+        {{- if (index .Values .serviceName).exposeMetrics }}
+        prometheus.io/port: "8081"
+        prometheus.io/scrape: "true"
+        prometheus.io/path: "/actuator/prometheus"
+        {{- end }}
+        {{- with (index .Values .serviceName).podAnnotations }}
+          {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      automountServiceAccountToken: {{ (index .Values .serviceName).automountServiceAccountToken }}
+      {{- include "scan-services.securityContext.pod" . }}
+      {{ if $instanceProfileEnabled }}
+      serviceAccountName: {{ required "A valid AWS service account name entry is required." (index .Values .serviceName).aws.serviceAccount }}
+      serviceAccount: {{ required "A valid AWS service account name entry is required." (index .Values .serviceName).aws.serviceAccount }}
+      {{ else }}
+      serviceAccountName: {{ include "scan-services.fullname" . }}-{{ .serviceName }}
+      serviceAccount: {{ include "scan-services.fullname" . }}-{{ .serviceName }}
+      {{ end }}
+      {{- if or .Values.imagePullSecret .Values.global.imagePullSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.imagePullSecret | default .Values.global.imagePullSecret }}
+      {{- end }}
+      {{- with (index .Values "cache-service").nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with (index .Values "cache-service").affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with (index .Values "cache-service").tolerations | default .Values.tolerations | default .Values.global.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if (index .Values .serviceName).initContainers }}
+      initContainers:
+        {{- toYaml (index .Values .serviceName).initContainers | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ .serviceName }}
+          image: {{ include "scan-services.image.name" . }}
+          imagePullPolicy: {{ .Values.imagePullPolicy | default .Values.global.imagePullPolicy }}
+          {{- include "scan-services.securityContext.container" (dict "containerName" .serviceName "Values" .Values "Capabilities" .Capabilities) | indent 10 }}
+          ports:
+            - name: "http"
+              protocol: "TCP"
+              containerPort: 8443
+            - name: "metrics"
+              protocol: "TCP"
+              containerPort: 8081
+          env:
+            {{- if eq .Values.mode "SRM" }}
+            - name: "SRM_URL"
+              value: {{ .Values.srm.url }}
+            {{- end }}
+            {{- if eq .Values.mode "CNC" }}
+            - name: AUTHORIZATION_SERVER
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "scan-services.fullname" . }}-connect-config
+                  key: cim_url
+            {{- end }}
+            - name: "BUCKET_NAME"
+              value: {{ required "A valid cache storage bucket name entry is required." (index .Values .serviceName).bucketName}}
+            - name: "LOGGING_LEVEL"
+              value: "WARN"
+            - name: LOGGING_LEVEL_COM_BLACKDUCK
+              value: {{ (index .Values .serviceName).logLevel}}
+            - name: CLIENT_CACERT
+              value: "/etc/ssl/ca.crt"
+            - name: SERVER_CERT
+              value: "/etc/ssl/tls.crt"
+            - name: SERVER_KEY
+              value: "/etc/ssl/tls.key"
+            - name: CNC_JAVA_OPTS
+              value: {{ (index .Values .serviceName).javaOpts }}
+            {{- if (index .Values .serviceName).environment }}
+            {{- range $name, $value := (index .Values .serviceName).environment }}
+            - name: {{ $name | quote}}
+              value: {{ $value | quote }}
+            {{- end }}
+            {{- end }}
+            {{- include "storage_cache.env" . | indent 12 }}
+            {{- include "redis_cache.env" . | indent 12 }}
+          volumeMounts:
+            - name: temp-dir
+              mountPath: /tmp
+            - name: certs
+              mountPath: /etc/ssl
+            {{- if or (index .Values .serviceName).redis.cacertSecret .Values.global.redis.cacertSecret }}
+            - name: redis-certs
+              mountPath: /etc/redis/ssl
+            {{- end}}
+            {{- if eq (index .Values .serviceName).storageProvider "gcp" }}
+            - name: gcs-credentials
+              mountPath: /etc/gcp
+            {{- end}}
+            {{- if (index .Values .serviceName).extraVolumeMounts }}
+            {{- toYaml (index .Values .serviceName).extraVolumeMounts | nindent 12 }}
+            {{- end }}
+            {{- if .Values.extraVolumeMounts }}
+            {{- toYaml .Values.extraVolumeMounts | nindent 12 }}
+            {{- end }}
+            {{- if .Values.global.extraVolumeMounts }}
+            {{- toYaml .Values.global.extraVolumeMounts | nindent 12 }}
+            {{- end }}
+          resources:
+          {{- toYaml (index .Values .serviceName).resources | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: "/actuator/health/readiness"
+              port: 8081
+            initialDelaySeconds: {{ (index .Values .serviceName).readinessProbe.initialDelaySeconds}}
+            periodSeconds: {{ (index .Values .serviceName).readinessProbe.periodSeconds}}
+            timeoutSeconds: {{ (index .Values .serviceName).readinessProbe.timeoutSeconds }}
+            failureThreshold: {{ (index .Values .serviceName).readinessProbe.failureThreshold}}
+          livenessProbe:
+            httpGet:
+              path: "/actuator/health/liveness"
+              port: 8081
+            initialDelaySeconds: {{ (index .Values .serviceName).livenessProbe.initialDelaySeconds}}
+            periodSeconds: {{ (index .Values .serviceName).livenessProbe.periodSeconds}}
+            timeoutSeconds: {{ (index .Values .serviceName).livenessProbe.timeoutSeconds }}
+            failureThreshold: {{ (index .Values .serviceName).livenessProbe.failureThreshold}}
+          startupProbe:
+            httpGet:
+              path: "/actuator/health/liveness"
+              port: 8081
+            initialDelaySeconds: 15
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 30
+          terminationMessagePath: "/dev/termination-log"
+          terminationMessagePolicy: "File"
+      dnsPolicy: "ClusterFirst"
+      restartPolicy: "Always"
+      schedulerName: "default-scheduler"
+      terminationGracePeriodSeconds: 30
+      volumes:
+        - name: temp-dir
+          emptyDir: {}
+        {{- if eq (index .Values .serviceName).storageProvider "gcp" }}
+        - name: gcs-credentials
+          secret:
+            defaultMode: 420
+            secretName: {{ required "A valid GCS secret must be provided." (index .Values .serviceName).gcp.secret}}
+        {{- end}}
+        - name: certs
+          secret:
+            defaultMode: 420
+            secretName: {{ include "scan-services.fullname" . }}-cache-service-x509
+        {{- if or (index .Values .serviceName).redis.cacertSecret .Values.global.redis.cacertSecret}}
+        - name: redis-certs
+          secret:
+            defaultMode: 420
+            secretName: {{ (index .Values .serviceName).redis.cacertSecret | default .Values.global.redis.cacertSecret}}
+        {{- end}}
+        {{- if (index .Values .serviceName).extraVolumes }}
+        {{- toYaml (index .Values .serviceName).extraVolumes | nindent 8 }}
+        {{- end }}
+        {{- if .Values.extraVolumes }}
+        {{- toYaml .Values.extraVolumes | nindent 8 }}
+        {{- end }}
+        {{- if .Values.global.extraVolumes }}
+        {{- toYaml .Values.global.extraVolumes | nindent 8 }}
+        {{- end }}
+{{- end}}

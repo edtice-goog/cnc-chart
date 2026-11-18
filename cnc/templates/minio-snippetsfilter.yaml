@@ -1,0 +1,24 @@
+{{- if .Values.minioGateway.gateway.enabled }}
+{{- if and .Values.minioGateway.gateway.policies .Values.minioGateway.gateway.policies.snippetsFilter .Values.minioGateway.gateway.policies.snippetsFilter.enabled }}
+{{- $sf := .Values.minioGateway.gateway.policies.snippetsFilter -}}
+apiVersion: gateway.nginx.org/v1alpha1
+kind: SnippetsFilter
+metadata:
+  labels:
+    app.kubernetes.io/name: {{ .Values.minioGateway.fullnameOverride | default "minio" }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  name: {{ .Values.minioGateway.fullnameOverride | default "minio" }}-proxy-timeouts
+  namespace: {{ .Release.Namespace }}
+spec:
+  snippets:
+    - context: http.server.location
+      value: |
+        proxy_connect_timeout {{ $sf.connectTimeout | default "5s" }};
+        proxy_next_upstream {{ $sf.nextUpstream | default "error timeout" }};
+        proxy_next_upstream_timeout {{ $sf.nextUpstreamTimeout | default "0" }};
+        proxy_next_upstream_tries {{ $sf.nextUpstreamTries | default "3" }};
+        proxy_read_timeout {{ $sf.readTimeout | default "300s" }};
+        proxy_send_timeout {{ $sf.sendTimeout | default "300s" }};
+        proxy_buffering {{ $sf.proxyBuffering | default "off" }};
+{{- end }}
+{{- end }}

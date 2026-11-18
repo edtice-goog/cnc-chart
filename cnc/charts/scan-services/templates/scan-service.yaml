@@ -1,0 +1,538 @@
+{{- $_ :=  set . "serviceName" "scan-service" }}
+{{- $_ :=  set . "cacheServiceName" "cache-service" }}
+{{- $v1Openshift := .Capabilities.APIVersions.Has "security.openshift.io/v1" }}
+{{- include "scan-services.scanimpersonation.secret" . | indent 0 }}
+{{ $proxyTlsMode := include "proxy.tlsmode" . }}
+
+---
+{{- include "scan-services.postgres.secret" . | indent 0 }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "scan-services.fullname" . }}-{{ .serviceName }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+---
+{{- if (index .Values .serviceName).migrateJob.enabled }}
+apiVersion: "batch/v1"
+kind: "Job"
+metadata:
+  name: {{ include "scan-services.fullname" . }}-{{ .serviceName }}-migration
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    helm.sh/hook-weight: "-11"
+    helm.sh/hook: pre-upgrade, pre-install
+    helm.sh/hook-delete-policy: before-hook-creation
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        {{- include "chart.labels" . | nindent 8 }}
+    spec:
+      automountServiceAccountToken: {{ (index .Values .serviceName).automountServiceAccountToken }}
+      restartPolicy: "Never"
+      {{- include "scan-services.securityContext.pod" . }}
+      {{- if or .Values.imagePullSecret .Values.global.imagePullSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.imagePullSecret | default .Values.global.imagePullSecret }}
+      {{- end }}
+      {{- with (index .Values "scan-service").nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with (index .Values "scan-service").affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with (index .Values "scan-service").tolerations | default .Values.tolerations | default .Values.global.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ .serviceName }}
+          image: {{ include "scan-services.migrationimage.name" . }}
+          imagePullPolicy: {{ .Values.imagePullPolicy | default .Values.global.imagePullPolicy }}
+          {{- include "scan-services.securityContext.container" (dict "containerName" "migrateJob" "Values" (index .Values .serviceName) "Capabilities" .Capabilities) | indent 10 }}
+          resources:
+            {{- toYaml (index .Values .serviceName).migrateJob.resources | nindent 12 }}
+          env:
+          - name: LOGLEVEL
+            value: {{ (index .Values .serviceName).logLevel }}
+          - name: POSTGRES_SSLMODE
+            value: {{ (index .Values .serviceName).postgres.sslmode | default .Values.postgres.sslmode | default .Values.global.postgres.sslmode }}
+          - name: POSTGRES_SSLROOTCERT
+            value: /opt/postgresql/ssl/postgres-root.pem
+          - name: PGDATABASE
+            value: {{ .Values.postgres.database | quote }}
+          - name: CREATE_DATABASE
+            value: {{ (index .Values "scan-service").postgres.createDatabase | quote }}
+          {{ if $v1Openshift }}
+          - name: JDK_JAVA_OPTIONS
+            value: "-Dcom.redhat.fips=false"
+          {{ end }}
+          {{- include "scan-services.postgres.environment" . | indent 10 }}
+          command:
+            - /bin/sh
+            - -ec
+            - |
+              set -x
+
+              if [[ $CREATE_DATABASE == true ]]; then
+                prefix="sslmode=$POSTGRES_SSLMODE sslrootcert=$POSTGRES_SSLROOTCERT"
+
+                export PGHOST=${POSTGRES_HOST}
+                export PGPORT=${POSTGRES_PORT}
+                export PGUSER=${POSTGRES_USERNAME}
+                export PGPASSWORD=${POSTGRES_PASSWORD}
+
+                RecordCount=$(psql "$prefix" --tuples-only --command "SELECT count(*) FROM pg_database WHERE datname='$POSTGRES_DATABASE'")
+                if [ "$RecordCount" -eq 0 ]; then
+                  psql "$prefix" --command "create database \"$POSTGRES_DATABASE\" encoding UTF8"
+                else
+                  echo "database $POSTGRES_DATABASE already exists"
+                fi
+              fi
+
+              /liquibase/liquibase "--url=jdbc:postgresql://${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DATABASE}?sslmode=${POSTGRES_SSLMODE}&sslrootcert=${POSTGRES_SSLROOTCERT}" \
+                --changeLogFile=./changelog/changelog.xml \
+                --username="${POSTGRES_USERNAME}" \
+                --password="${POSTGRES_PASSWORD}" \
+                --logLevel="${LOGLEVEL}" \
+                update
+          volumeMounts:
+          {{ if or (index .Values "trust-stores").enabled (index .Values.global "trust-stores").enabled }}
+          - name: import-postgres-root-certs
+            mountPath: /opt/postgresql/ssl
+          {{ end }}
+          {{- if (index .Values "scan-service").migrateJob.extraVolumeMounts }}
+          {{- toYaml (index .Values "scan-service").migrateJob.extraVolumeMounts | nindent 10 }}
+          {{- end }}
+          {{- if .Values.extraVolumeMounts }}
+          {{- toYaml .Values.extraVolumeMounts | nindent 10 }}
+          {{- end }}
+          {{- if .Values.global.extraVolumeMounts }}
+          {{- toYaml .Values.global.extraVolumeMounts | nindent 10 }}
+          {{- end }}
+      {{- if or (index .Values "scan-service").migrateJob.initContainers .Values.postgres.jobSidecars .Values.global.postgres.jobSidecars }}
+      initContainers:
+      {{- if (index .Values "scan-service").migrateJob.initContainers }}
+      {{- include "common.tplvalues.render" ( dict "value" (index .Values "scan-service").migrateJob.initContainers "context" $ ) | nindent 6 }}
+      {{- end }}
+      {{- if include "isKubeVersionValid" . }}
+      {{- if .Values.postgres.jobSidecars }}
+      {{- include "common.tplvalues.render" ( dict "value" .Values.postgres.jobSidecars "context" $ ) | nindent 6 }}
+      {{- end }}
+      {{- if .Values.global.postgres.jobSidecars }}
+      {{- include "common.tplvalues.render" ( dict "value" .Values.global.postgres.jobSidecars "context" $ ) | nindent 6 }}
+      {{- end }}
+      {{- end }}
+      {{- end }}          
+      volumes:
+      {{ if or (index .Values "trust-stores").enabled (index .Values.global "trust-stores").enabled }}
+      - name: import-postgres-root-certs
+        configMap:
+          defaultMode: 420
+          name: {{ required "A valid trust-stores configmap name must be provided." ((index .Values "trust-stores").configmapName | default (index .Values.global "trust-stores").configmapName) }}
+      {{ end }}
+      {{- if (index .Values "scan-service").migrateJob.extraVolumes }}
+      {{- toYaml (index .Values "scan-service").migrateJob.extraVolumes | nindent 6 }}
+      {{- end }}
+      {{- if .Values.extraVolumes }}
+      {{- toYaml .Values.extraVolumes | nindent 6 }}
+      {{- end }}
+      {{- if .Values.global.extraVolumes }}
+      {{- toYaml .Values.global.extraVolumes | nindent 6 }}
+      {{- end }}
+{{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "scan-services.fullname" . }}-{{ .serviceName }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "service.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: {{ include "scan-services.fullname" . }}-grpc
+      port: 9999
+      protocol: TCP
+      targetPort: 9999
+    - name: {{ include "scan-services.fullname" . }}-http
+      port: 9998
+      protocol: TCP
+      targetPort: 9998
+---  
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "scan-services.fullname" . }}-{{ .serviceName }}
+  namespace: {{ .Release.Namespace }}
+rules:
+# Permissions for managing kubernetes jobs
+- apiGroups: ["batch", "extensions"]
+  resources: ["jobs"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+# Permissions to read pod logs, configmaps
+- apiGroups: [""]
+  resources: ["pods", "pods/log"]
+  verbs: ["get", "list", "watch", "delete"]
+# Permissions for managing kubernetes secrets
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "scan-services.fullname" . }}-{{ .serviceName }}
+  namespace: {{ .Release.Namespace }}
+subjects:
+- kind: "ServiceAccount"
+  name: {{ include "scan-services.fullname" . }}-{{ .serviceName }}
+roleRef:
+  kind: Role
+  name: {{ include "scan-services.fullname" . }}-{{ .serviceName }}
+  apiGroup: rbac.authorization.k8s.io
+---
+{{- $tolerations := (index .Values "scan-service").tolerations | default .Values.tolerations | default .Values.global.tolerations }}
+{{- $containerSecurityContext := include "scan-services.securityContext.container" (dict "containerName" .serviceName "Values" .Values "Capabilities" .Capabilities) | fromYaml }}
+{{- $podSecurityContext := include "scan-services.securityContext.pod" . | fromYaml }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "scan-services.fullname" . }}-analysis-job-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+data:
+  job_spec.json: |
+    {{- $configMapData := dict "tolerations" $tolerations "podSecurityContext" (index $podSecurityContext "securityContext") "containerSecurityContext" (index $containerSecurityContext "securityContext") }}
+    {{- toJson  $configMapData | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "scan-services.fullname" . }}-{{ .serviceName }}
+  namespace: {{ .Release.Namespace }}
+  {{- if (index .Values .serviceName).annotations }}
+  annotations:
+    {{- with (index .Values .serviceName).annotations }}
+      {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- end }}
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "service.selectorLabels" . | nindent 6 }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: "100%"
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        {{- include "service.selectorLabels" . | nindent 8 }}
+      annotations:
+        checksum/connect-config: {{ include "scan-services.connectConfig.resourceVersion" . | sha256sum }}
+        {{- if (index .Values .serviceName).observability.exposeMetrics }}
+        prometheus.io/port: "9090"
+        prometheus.io/scrape: "true"
+        {{- end }}
+        {{- with (index .Values .serviceName).podAnnotations }}
+          {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      automountServiceAccountToken: {{ (index .Values .serviceName).automountServiceAccountToken }}
+      {{- include "scan-services.securityContext.pod" . }}
+      {{- if or .Values.imagePullSecret .Values.global.imagePullSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.imagePullSecret | default .Values.global.imagePullSecret }}
+      {{- end }}
+      {{- with (index .Values "scan-service").nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with (index .Values "scan-service").affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with (index .Values "scan-service").tolerations | default .Values.tolerations | default .Values.global.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "scan-services.fullname" . }}-{{ .serviceName }}
+      serviceAccount: {{ include "scan-services.fullname" . }}-{{ .serviceName }}
+      containers:
+        - name: {{ .serviceName }}
+          image: {{ include "scan-services.image.name" . }}
+          imagePullPolicy: {{ .Values.imagePullPolicy | default .Values.global.imagePullPolicy }}
+          {{- include "scan-services.securityContext.container" (dict "containerName" .serviceName "Values" .Values "Capabilities" .Capabilities) | indent 10 }}
+          ports:
+            - name: public-grpc
+              containerPort: 9999
+              protocol: TCP
+            - name: public-http
+              containerPort: 9998
+              protocol: TCP
+            - name: metrics
+              containerPort: 9090
+              protocol: TCP
+          env:
+          - name: OBSERVABILITY_EXPOSEMETRICS
+            value: {{ (index .Values .serviceName).observability.exposeMetrics | quote }}
+        {{- if (index .Values .serviceName).observability.jaegerURL }}
+          - name: OBSERVABILITY_JAEGERURL
+            value: {{ (index .Values .serviceName).observability.jaegerURL }}
+        {{- end }}
+          - name: HTTP_ENABLED
+            value: "true"
+          - name: HTTP_PORT
+            value: "9998"
+          - name: KEYGEN_ENABLED
+            value: {{ .Values.global.keygen.enabled | quote }}
+        {{- if eq .Values.mode "CNC" }}
+          - name: HTTP_AUTHMODE
+            value: cnc-jwt
+          - name: CNC_URL
+            valueFrom:
+              configMapKeyRef:
+                name: {{ include "scan-services.fullname" . }}-connect-config
+                key: cim_url
+          - name: CNC_COMMITURL
+            valueFrom:
+              configMapKeyRef:
+                name: {{ include "scan-services.fullname" . }}-connect-config
+                key: commit_url
+          - name: CNC_IMPERSONATIONSECRET
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "scan-services.fullname" . }}-impersonation-token
+                key: "token"
+        {{- end }}
+          - name: LOGLEVEL
+            value: {{ (index .Values .serviceName).logLevel }}
+          - name: NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+          - name: API_PAGINATION_LIMIT
+            value: {{ (index .Values .serviceName).api.pagination.limit | quote}}
+          - name: STORAGE_HOST
+            value: {{ include "scan-services.fullname" . }}-storage-service
+          - name: DISPATCHER_COVERITY_CACHEURL
+            value: {{ printf "https://%s:%d" (list (include "scan-services.fullname" .) .cacheServiceName | join "-") (8443 | int) | quote}}
+          - name: DISPATCHER_JOB_SERVICEACCOUNT
+            value: {{ include "scan-services.fullname" . }}-scan-service
+          - name: DISPATCHER_JOB_RPC_HOST
+            value: {{ include "scan-services.fullname" . }}-scan-service
+          - name: DISPATCHER_COVERITY_IMAGEPULLSECRETS
+            value: {{ .Values.imagePullSecret | default .Values.global.imagePullSecret }}
+          - name: DISPATCHER_INTERVAL
+            value: {{ (index .Values .serviceName).dispatcher.interval | quote }}
+          - name: DISPATCHER_JOB_USERPROVIDEDJOBCONFIG
+            value: "/opt/job-config/job_spec.json"
+          - name: DISPATCHER_JOB_SCHEDULERNAME
+            value: {{ (index .Values .serviceName).dispatcher.schedulerName | quote}}
+          - name: DISPATCHER_COVERITY_IMAGEPULLPOLICY
+            value: {{ (index .Values .serviceName).dispatcher.imagePullPolicy | quote}}
+          - name: POSTGRES_SSLMODE
+            value: {{ (index .Values .serviceName).postgres.sslmode | default .Values.postgres.sslmode | default .Values.global.postgres.sslmode }}
+          - name: POSTGRES_SSLROOTCERT
+            value: /opt/trust-stores/ssl/postgres-root.pem
+          {{ if or (index .Values "trust-stores").enabled (index .Values.global "trust-stores").enabled }}
+          - name: SSL_CERT_DIR
+            value: "/opt/trust-stores/ssl"
+          {{- end }}
+          - name: RETENTION_ENABLED
+            value: {{ (index .Values .serviceName).retention.enabled | quote}}
+          - name: RETENTION_MINUTES
+            value: {{ (index .Values .serviceName).retention.minutes | quote}}
+          - name: RETENTION_CLEANUP_INTERVAL
+            value: {{ (index .Values .serviceName).retention.cleanupInterval | quote}}
+          - name: MODE
+            value: {{ .Values.mode | quote}}
+          {{- if eq .Values.mode "SRM" }}
+          - name: SRM_URL
+            value: {{ .Values.srm.url | quote }}
+          - name: SRM_CODESIGHT_URL
+            value: {{ .Values.srm.codesight.url | quote }}
+          {{- end }}
+          - name: TOOL_SYNC_ENABLED
+            value: {{ (index .Values .serviceName).tools.sync.enabled | quote }}
+          {{- if (index .Values .serviceName).tools.sync.enabled }}
+          - name: TOOL_SYNCJSON_URL
+            value: "https://repo.blackduck.com/coverity-cloud/global_manifest.json"
+          {{- end }}
+          - name: SCANFARM_VERSION
+            value: {{ .Chart.AppVersion | quote }}
+          - name: SCANFARM_RUNNERIMAGE
+            value: {{ printf "%s/%s:%s%s" (required "A valid image registry entry is required." ((index .Values "scan-service").jobRunner.registry | default .Values.imageRegistry | default .Values.global.imageRegistry )) (required "A valid image name entry is required." (index .Values "scan-service").jobRunner.image) ((index .Values "scan-service").jobRunner.version | default .Values.imageVersion | default .Values.global.imageVersion) ( .Values.imageTagSuffix | default .Values.global.imageTagSuffix ) | quote }}
+          - name: CONTAINERREGISTRY
+            value: {{ .Values.imageRegistry | default .Values.global.imageRegistry }}
+          - name: IMAGEVERSION
+            value: {{ printf "%s%s" ((index .Values .serviceName).version | default .Values.imageVersion | default .Values.global.imageVersion ) ( .Values.imageTagSuffix | default .Values.global.imageTagSuffix ) | quote }}
+          {{- include "scan-services.postgres.environment" . | indent 10 }}
+          {{- if (index .Values .serviceName).environment }}
+          {{- range $name, $value := (index .Values .serviceName).environment }}
+          - name: {{ $name | quote}}
+            value: {{ $value | quote }}
+          {{- end }}
+          {{- end }}
+          - name: DISPATCHER_JOB_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+          - name: UPLOAD_ARTIFACTS
+            value: {{ (index .Values .serviceName).jobRunner.uploadArtifacts | quote }}
+          {{- if or .Values.proxy.enabled .Values.global.proxy.enabled }}
+          - name: PROXY_TLS_MODE
+            value: {{ $proxyTlsMode }}
+          - name: PROXY_URL
+            value: {{ include "proxy.url" . }}
+          {{- if ne $proxyTlsMode "insecure" }}
+          - name: PROXY_TLS_CA
+            value: /opt/trust-stores/ssl/proxy-server.pem
+          {{- if eq $proxyTlsMode "mtls" }}
+          - name: PROXY_TLS_CERTIFICATE
+            value: /opt/proxy-certs/client-cert
+          - name: PROXY_TLS_KEY
+            value: /opt/proxy-certs/client-key
+          {{- end }}
+          {{- end }}
+          {{- end }}
+          volumeMounts:
+          {{- if not (index .Values .serviceName).automountServiceAccountToken }}
+          - name: kube-api-access
+            readOnly: true
+            mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+          {{- end }}
+          - mountPath: /tmp/upload
+            name: data
+          - mountPath: /opt/auth
+            name: certs
+            readOnly: true
+          - mountPath: /opt/tool-secrets
+            name: tool-license
+            readOnly: true
+          {{ if or (index .Values "trust-stores").enabled (index .Values.global "trust-stores").enabled }}
+          - name: import-trust-stores-certs
+            mountPath: /opt/trust-stores/ssl
+          {{ end }}
+          - name: import-analysis-job-config
+            mountPath: /opt/job-config/job_spec.json
+            subPath: job_spec.json
+          {{ if (index .Values .serviceName).tools.sync.enabled }}
+          - name: tools-sync-credentials
+            mountPath: /opt/credentials/tool-sync
+          {{ end }}
+          {{ if and (or .Values.proxy.enabled .Values.global.proxy.enabled) (eq $proxyTlsMode "mtls") }}
+          - name: proxy-certs
+            mountPath: /opt/proxy-certs
+          {{ end }}
+          {{- if (index .Values "scan-service").extraVolumeMounts }}
+          {{- toYaml (index .Values "scan-service").extraVolumeMounts | nindent 10 }}
+          {{- end }}
+          {{- if .Values.extraVolumeMounts }}
+          {{- toYaml .Values.extraVolumeMounts | nindent 10 }}
+          {{- end }}
+          {{- if .Values.global.extraVolumeMounts }}
+          {{- toYaml .Values.global.extraVolumeMounts | nindent 10 }}
+          {{- end }}
+          resources:
+            {{- toYaml (index .Values .serviceName).resources | nindent 12 }}
+          livenessProbe:
+            exec:
+              command: ["/grpc_health_probe", "-addr=localhost:9999", "-tls","-tls-ca-cert=/opt/auth/ca.crt","-tls-client-cert=/opt/auth/tls.crt","-tls-client-key=/opt/auth/tls.key",-tls-server-name={{ include "scan-services.fullname" . }}-{{ .serviceName }} ,"-connect-timeout=250s", "-rpc-timeout=100m"]
+            initialDelaySeconds: {{ (index .Values .serviceName).livenessProbe.initialDelaySeconds}}
+            periodSeconds: {{ (index .Values .serviceName).livenessProbe.periodSeconds}}
+            timeoutSeconds: {{ (index .Values .serviceName).livenessProbe.timeoutSeconds }}
+            failureThreshold: {{ (index .Values .serviceName).livenessProbe.failureThreshold}}
+      {{- if or (index .Values "scan-service").initContainers .Values.postgres.sidecars .Values.global.postgres.sidecars }}
+      initContainers:
+      {{- if (index .Values "scan-service").initContainers }}
+      {{- include "common.tplvalues.render" ( dict "value" (index .Values "scan-service").initContainers "context" $ ) | nindent 8 }}
+      {{- end }}
+      {{- if include "isKubeVersionValid" . }}
+      {{- if .Values.postgres.sidecars }}
+      {{- include "common.tplvalues.render" ( dict "value" .Values.postgres.sidecars "context" $ ) | nindent 8 }}
+      {{- end }}
+      {{- if .Values.global.postgres.sidecars }}
+      {{- include "common.tplvalues.render" ( dict "value" .Values.global.postgres.sidecars "context" $ ) | nindent 8 }}
+      {{- end }}
+      {{- end }}
+      {{- end }}
+      volumes:
+      {{- if not (index .Values .serviceName).automountServiceAccountToken }}
+      - name: kube-api-access
+        projected:
+          sources:
+            - serviceAccountToken:
+                expirationSeconds: 3607
+                path: token
+            - configMap:
+                name: kube-root-ca.crt
+                items:
+                  - key: ca.crt
+                    path: ca.crt
+            - downwardAPI:
+                items:
+                  - path: namespace
+                    fieldRef:
+                      apiVersion: v1
+                      fieldPath: metadata.namespace
+          defaultMode: 420
+      {{- end }}
+      - name: data
+        emptyDir: {}
+      - name: certs
+        secret:
+          defaultMode: 420
+          secretName: {{ include "scan-services.fullname" . }}-scan-service-x509
+      - name: tool-license
+        secret:
+          defaultMode: 420
+          secretName: {{ required "A valid Coverity license secret name (licenseSecretName) must be provided." ((index .Values .serviceName).licenseSecretName | default .Values.global.licenseSecretName) }}
+      {{ if or (index .Values "trust-stores").enabled (index .Values.global "trust-stores").enabled }}
+      - name: import-trust-stores-certs
+        configMap:
+          defaultMode: 420
+          name: {{ required "A valid trust-stores configmap name must be provided." ((index .Values "trust-stores").configmapName | default (index .Values.global "trust-stores").configmapName) }}
+      {{ end }}
+      - name: import-analysis-job-config
+        configMap:
+          defaultMode: 420
+          name: {{ include "scan-services.fullname" . }}-analysis-job-config   
+      {{ if (index .Values .serviceName).tools.sync.enabled }}
+      - name: tools-sync-credentials
+        secret:
+          defaultMode: 420
+          secretName: {{ required "A valid tools-sync secret with credentials is required when tools synchronization is enabled." (index .Values .serviceName).tools.sync.existingSecret }}
+      {{ end }}
+      {{ if and (or .Values.proxy.enabled .Values.global.proxy.enabled) (eq $proxyTlsMode "mtls") }}
+      - name: proxy-certs
+        secret:
+          defaultMode: 420
+          secretName: {{ required "A proxy secret containing client certificates with key client-cert, client-key must be provided when the TLS mode is set to mtls." (.Values.proxy.existingSecret | default .Values.global.proxy.existingSecret) }}
+      {{ end }}
+      {{- if (index .Values "scan-service").extraVolumes }}
+      {{- toYaml (index .Values "scan-service").extraVolumes | nindent 6 }}
+      {{- end }}
+      {{- if .Values.extraVolumes }}
+      {{- toYaml .Values.extraVolumes | nindent 6 }}
+      {{- end }}
+      {{- if .Values.global.extraVolumes }}
+      {{- toYaml .Values.global.extraVolumes | nindent 6 }}
+      {{- end }}

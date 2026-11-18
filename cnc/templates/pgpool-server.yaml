@@ -1,0 +1,139 @@
+{{- $_ :=  set . "serviceName" "pgpool" }}
+{{- if and .Values.cim.pgpool.enabled (gt (int .Values.cim.pgpool.replicas) 0) -}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  {{- if .Values.cim.pgpool.annotations }}
+  annotations:
+    {{- with .Values.cim.pgpool.annotations }}
+      {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- end }}
+  name: {{ include "cnc.fullname" . }}-{{ .serviceName }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "service.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.cim.pgpool.replicas }}
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "service.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/pgpool-server-config: {{ include (print $.Template.BasePath "/pgpool-server-config.yaml") . | sha256sum }}
+        checksum/webapp: {{ include (print $.Template.BasePath "/webapp.yaml") . | sha256sum }}
+        # serviceName is getting overrided, When sourcing yaml file's to set annotations in the process of calculating checksum.
+        {{- $_ :=  set . "serviceName" "pgpool" }}
+        {{- with .Values.cim.pgpool.annotations }}
+          {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "service.selectorLabels" . | nindent 12 }}
+    spec:
+      automountServiceAccountToken: {{ (index .Values.cim .serviceName).automountServiceAccountToken }}
+      {{- if or .Values.imagePullSecret .Values.global.imagePullSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.imagePullSecret | default .Values.global.imagePullSecret }}
+      {{- end }}
+      {{- with .Values.cim.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.cim.pgpool.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.cim.pgpool.tolerations | default .Values.tolerations | default .Values.global.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+      - name: {{ .serviceName }}
+        image: {{ printf "%s/%s:%s" (required "A valid image registry entry is required." ( .Values.cim.pgpool.registry | default .Values.imageRegistry | default .Values.global.imageRegistry )) (required "A valid image name (.Values.cim.pgpool.image) entry is required." .Values.cim.pgpool.image) (.Values.cim.pgpool.version) | quote }}
+        imagePullPolicy: {{ .Values.imagePullPolicy | default .Values.global.imagePullPolicy }}
+        {{- include "cnc.securityContext.container" (dict "containerName" .serviceName "Values" .Values.cim "Capabilities" .Capabilities) | indent 8 }}
+        ports:
+          - name: pgpool-port
+            containerPort: 9999
+            protocol: TCP
+        env:
+          # Set serviceName as cim to add db related envs
+          {{- $_ :=  set . "serviceName" "cim" }}
+          {{- include "cnc.postgres.environment" . | indent 10 }}
+          # Revert serviceName to pgpool
+          {{- $_ :=  set . "serviceName" "pgpool" }}
+          - name: PGPOOL_USER_CONF_FILE
+            value: /config/pgpool.conf
+          - name: PGPOOL_USER_HBA_FILE
+            value: /config/pool_hba.conf
+          - name: PGPOOL_POSTGRES_USERNAME
+            value: $(POSTGRES_USERNAME)
+          - name: PGPOOL_POSTGRES_PASSWORD
+            value: $(POSTGRES_PASSWORD)           
+          - name: PGPOOL_SR_CHECK_USER
+            value: $(POSTGRES_USERNAME) 
+          - name: PGPOOL_SR_CHECK_PASSWORD
+            value: $(POSTGRES_PASSWORD)
+          - name: PGPOOL_ADMIN_USERNAME
+            value: $(POSTGRES_USERNAME)
+          - name: PGPOOL_ADMIN_PASSWORD
+            value: $(POSTGRES_PASSWORD)
+          - name: PGPOOL_BACKEND_NODES
+            value: 0:$(POSTGRES_HOST)
+        resources:
+          {{- toYaml .Values.cim.pgpool.resources | nindent 12 }}
+        volumeMounts:
+        - name: pgpool-config
+          mountPath: /config
+        {{- if or (index .Values "trust-stores").enabled (index .Values.global "trust-stores").enabled }}
+        - name: trust-store-certs
+          mountPath: /coverity/truststorecerts
+        {{- end }}
+        - name: shared-dir
+          mountPath: /tmp
+          subPath: tmp-dir
+        - name: shared-dir
+          mountPath: /opt/bitnami/pgpool/etc
+          subPath: app-etc-dir
+        - name: shared-dir
+          mountPath: /opt/bitnami/pgpool/conf
+          subPath: app-conf-dir
+        - name: shared-dir
+          mountPath: /opt/bitnami/pgpool/tmp
+          subPath: app-tmp-dir
+        - name: shared-dir
+          mountPath: /opt/bitnami/pgpool/logs
+          subPath: app-logs-dir
+      volumes:
+      - name: pgpool-config
+        secret:
+          secretName: {{ include "cnc.fullname" . }}-cim-pgpool-config
+      {{- if or (index .Values "trust-stores").enabled (index .Values.global "trust-stores").enabled }}
+      - name: trust-store-certs
+        configMap:
+          name: {{ required "A valid trust-stores configmap name must be provided." ((index .Values "trust-stores").configmapName | default (index .Values.global "trust-stores").configmapName) }}
+      {{- end }}
+      - name: shared-dir
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "cnc.fullname" . }}-pgpool-svc
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "service.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: 9999
+      targetPort: 9999
+      protocol: TCP
+      name: pgpool-port
+  selector:
+    {{- include "service.selectorLabels" . | nindent 4 }}
+{{- end -}}

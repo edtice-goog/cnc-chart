@@ -1,0 +1,178 @@
+{{- include "triage-suggestion-service.validateProductMode" . }}
+{{- if .Values.deployment }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "triage-suggestion-service.fullname" . }}-api
+  labels:
+    {{- include "triage-suggestion-service.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  {{- if not (and .Values.hpa.enabled .Values.deployment.autoscaling.enabled) }}
+  replicas: {{ .Values.deployment.replicaCount | default 1 }}
+  {{- end }}
+  strategy:
+    type: {{ .Values.deployment.strategy | default "RollingUpdate" }}
+  selector:
+    matchLabels:
+      {{- include "triage-suggestion-service.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: api
+  template:
+    metadata:
+      annotations:
+        {{- with .Values.deployment.annotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "triage-suggestion-service.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: api
+    spec:
+      {{- if .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml .Values.imagePullSecrets | nindent 8 }}
+      {{- else if .Values.global.imagePullSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.global.imagePullSecret }}
+      {{- end }}
+      serviceAccountName: {{ .Values.deployment.serviceAccount | default "triage-suggestion-service" }}
+      {{- include "triage-suggestion-service.podSecurityContext" . | nindent 6 }}
+      {{- with .Values.schedulerName | default .Values.global.schedulerName }}
+      schedulerName: {{ . }}
+      {{- end }}
+      {{- with .Values.nodeSelector | default .Values.global.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations | default .Values.global.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+      - name: api
+        {{- $registry := .Values.deployment.imageRegistry | default .Values.global.imageRegistry }}
+        {{- $tagSuffix := .Values.global.imageTagSuffix | default "" }}
+        {{- if $registry }}
+        image: "{{ $registry }}/{{ .Values.deployment.image }}:{{ .Values.deployment.version | default .Chart.AppVersion }}{{ $tagSuffix }}"
+        {{- else }}
+        image: "{{ .Values.deployment.image }}:{{ .Values.deployment.version | default .Chart.AppVersion }}{{ $tagSuffix }}"
+        {{- end }}
+        imagePullPolicy: {{ .Values.global.imagePullPolicy | default "IfNotPresent" }}
+        ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+        - name: metrics
+          containerPort: 9090
+          protocol: TCP
+        env:
+        {{- range $key, $value := .Values.global.environment }}
+        - name: {{ $key }}
+          value: {{ $value | quote }}
+        {{- end }}
+        {{- range $key, $value := .Values.deployment.environment }}
+        - name: {{ $key }}
+          value: {{ $value | quote }}
+        {{- end }}
+        {{- range $key, $value := .Values.global.envVarsFromSecret }}
+        - name: {{ $key }}
+          valueFrom:
+            secretKeyRef:
+              name: {{ $value.name }}
+              key: {{ $value.key }}
+        {{- end }}
+        {{- include "triage-suggestion-service.storageEnvVars" $ | nindent 8 }}
+        {{- range $key, $value := .Values.deployment.envVarsFromSecret }}
+        - name: {{ $key }}
+          valueFrom:
+            secretKeyRef:
+              name: {{ $value.name }}
+              key: {{ $value.key }}
+        {{- end }}
+        {{- include "triage-suggestion-service.mqEnvVars" $ | nindent 8 }}
+        {{- include "triage-suggestion-service.postgresEnvVars" $ | nindent 8 }}
+        {{- include "triage-suggestion-service.vaultEnvVars" $ | nindent 8 }}
+        {{- include "triage-suggestion-service.llmKeyEncryptionEnvVars" $ | nindent 8 }}
+        - name: BASE_URL
+          value: {{ include "triage-suggestion-service.baseURL" $ | quote }}
+        {{- if .Values.deployment.livenessProbe }}
+        livenessProbe:
+          {{- toYaml .Values.deployment.livenessProbe | nindent 10 }}
+        {{- end }}
+        {{- if .Values.deployment.readinessProbe }}
+        readinessProbe:
+          {{- toYaml .Values.deployment.readinessProbe | nindent 10 }}
+        {{- end }}
+        {{- if .Values.deployment.resources }}
+        resources:
+          {{- toYaml .Values.deployment.resources | nindent 10 }}
+        {{- end }}
+        {{- if .Values.volumes.enabled }}
+        volumeMounts:
+        {{- if .Values.vault.enabled }}
+        - name: db-creds
+          mountPath: /vault/secrets
+        {{- end }}
+        {{- if .Values.volumes.pvc.enabled }}
+        - name: workdirs
+          mountPath: /var/lib/triage-suggestion-service/workdirs
+        - name: artifacts
+          mountPath: /var/lib/triage-suggestion-service/artifacts
+        {{- end }}
+        {{- range .Values.volumes.secrets }}
+        - name: {{ .name }}-volume
+          mountPath: {{ .mountPath }}
+          readOnly: true
+        {{- end }}
+        {{- range .Values.volumes.configMaps }}
+        - name: {{ .name }}
+          mountPath: {{ .mountPath }}
+          readOnly: true
+        {{- end }}
+        {{- if .Values.global.extraVolumeMounts }}
+        {{- toYaml .Values.global.extraVolumeMounts | nindent 8 }}
+        {{- end }}
+        {{- include "triage-suggestion-service.gcsVolumeMounts" $ | nindent 8 }}
+        {{- include "triage-suggestion-service.trustStoresVolumeMounts" $ | nindent 8 }}
+        {{- include "triage-suggestion-service.llmKeyEncryptionVolumeMounts" $ | nindent 8 }}
+        {{- include "triage-suggestion-service.mqTlsVolumeMounts" $ | nindent 8 }}
+        {{- end }}
+      {{- if .Values.volumes.enabled }}
+      volumes:
+      {{- if .Values.vault.enabled }}
+      - name: db-creds
+        emptyDir: {}
+      {{- end }}
+      {{- if .Values.volumes.pvc.enabled }}
+      - name: workdirs
+        persistentVolumeClaim:
+          claimName: {{ include "triage-suggestion-service.fullname" . }}-workdirs
+      - name: artifacts
+        persistentVolumeClaim:
+          claimName: {{ include "triage-suggestion-service.fullname" . }}-artifacts
+      {{- end }}
+      {{- range .Values.volumes.secrets }}
+      - name: {{ .name }}-volume
+        secret:
+          secretName: {{ .name }}
+          {{- if .items }}
+          items:
+          {{- range .items }}
+          - key: {{ .key }}
+            path: {{ .path }}
+          {{- end }}
+          {{- end }}
+      {{- end }}
+      {{- range .Values.volumes.configMaps }}
+      - name: {{ .name }}
+        configMap:
+          name: {{ .name }}
+      {{- end }}
+      {{- if .Values.global.extraVolumes }}
+      {{- toYaml .Values.global.extraVolumes | nindent 6 }}
+      {{- end }}
+      {{- include "triage-suggestion-service.gcsVolumes" $ | nindent 6 }}
+      {{- include "triage-suggestion-service.trustStoresVolumes" $ | nindent 6 }}
+      {{- include "triage-suggestion-service.llmKeyEncryptionVolumes" $ | nindent 6 }}
+      {{- include "triage-suggestion-service.mqTlsVolumes" $ | nindent 6 }}
+      {{- end }}
+{{- end }}

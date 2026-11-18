@@ -1,0 +1,221 @@
+{{- if .Values.cim.setupJob.enabled -}}
+{{- $_ :=  set . "serviceName" "cim" }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "cnc.fullname" . }}-cim-migrate-config
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    helm.sh/hook: pre-upgrade, pre-install
+    helm.sh/hook-weight: "-15"
+stringData:
+  cim-migrate.properties: |
+    db=${POSTGRES_DATABASE}
+    password=${POSTGRES_PASSWORD}
+    url={{ include "cnc.postgres.jdbcurl" . }}
+    user=${POSTGRES_USERNAME}
+---
+{{- if .Values.cim.cimweb.updateLicense.enabled }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "cnc.fullname" . }}-cim-updatelicense-config
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    helm.sh/hook: pre-upgrade, pre-install
+    helm.sh/hook-weight: "-15"
+stringData:
+  cim.properties: |
+    maindb.name=${POSTGRES_DATABASE}
+    maindb.password=${POSTGRES_PASSWORD}
+    maindb.url={{ include "cnc.postgres.jdbcurl" . }}
+    maindb.user=${POSTGRES_USERNAME}
+    web.url={{ .Values.cim.cimweb.webUrl }}
+    keygen.base.url=https://api.keygen.sh
+---
+{{ end }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  annotations:
+    helm.sh/hook-weight: "-12"
+    helm.sh/hook: pre-upgrade, pre-install
+    helm.sh/hook-delete-policy: before-hook-creation
+  name: {{ include "cnc.fullname" . }}-cim-setup
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: cim-setup
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: cim-setup
+    spec:
+      automountServiceAccountToken: {{ (index .Values.cim "setupJob").automountServiceAccountToken }}
+      activeDeadlineSeconds: {{ .Values.cim.setupJob.activeDeadlineSeconds }}
+      {{- include "cnc.securityContext.pod" . }}
+      {{- if or .Values.imagePullSecret .Values.global.imagePullSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.imagePullSecret | default .Values.global.imagePullSecret }}
+      {{- end }}
+      restartPolicy: "Never"
+      {{- with .Values.cim.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.cim.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.cim.tolerations | default .Values.tolerations | default .Values.global.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: cim-setup
+          command: ["/coverity/cim/sql/cnc-setup-job.sh"]
+          {{- include "cnc.securityContext.container" (dict "containerName" "setupJob" "Values" .Values.cim "Capabilities" .Capabilities) | indent 10 }}
+          env:
+          {{- include "cnc.postgres.environment" . | indent 10 }}
+          # This set of pg creds is used when *creating* the Connect database
+          - name: PGHOST
+            value: $(POSTGRES_HOST)
+          - name: PGPORT
+            value: $(POSTGRES_PORT)
+          - name: PGUSER
+            value: $(POSTGRES_USERNAME)
+          - name: PGPASSWORD
+            value: $(POSTGRES_PASSWORD)
+          - name: PGDATABASE
+            value: {{ .Values.global.postgres.database | quote }}
+          # This set of pg creds is used when *accessing* the Connect database
+          - name: PGURL
+            value: jdbc:postgresql://$(POSTGRES_HOST):$(POSTGRES_PORT)/$(POSTGRES_DATABASE)?sslmode={{ (index .Values .serviceName).postgres.sslmode | default .Values.global.postgres.sslmode }}&sslfactory=org.postgresql.ssl.DefaultJavaSSLFactory
+          - name: CIM_PGHOST
+            value: $(POSTGRES_HOST)
+          - name: CIM_PGPORT
+            value: $(POSTGRES_PORT)
+          - name: CIM_PGUSER
+            value: $(POSTGRES_USERNAME)
+          - name: CIM_PGPASSWORD
+            value: $(POSTGRES_PASSWORD)
+          - name: CIM_PGDATABASE
+            value: $(POSTGRES_DATABASE)
+          # SSL config
+          - name: SSL_MODE
+            value: {{ .Values.cim.postgres.sslmode | default .Values.global.postgres.sslmode}}
+          - name: PGROOTCERT
+            value: {{ if (index .Values.global "trust-stores").enabled }}/coverity/truststorecerts/postgres-root.pem{{ else }}""{{ end }}
+          # Database initialization config
+          - name: CREATE_CONNECT_DB
+            value: {{ .Values.cim.setupJob.createDatabases | quote }}
+          # Connect schema upgrade config
+          - name: UPGRADE_SCHEMA_PROPERTIES_PATH
+            value: "/config/cim/cim-migrate.properties"
+          - name: UPGRADE_DB_SCHEMA
+            value: "true"
+          # LDAP config
+          - name: UPDATE_LDAP_CONFIG
+            value: {{ .Values.cim.ldap.updateConfig | quote }}
+          - name: UPDATE_LDAP_CONFIG_PROPERTIES_PATH
+            value: ""
+          - name: CIM_LDAP_KEY
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Values.cim.ldap.keySecret.existingSecret | default (printf "%s-ldap-encryption-key" (include "cnc.fullname" .)) }}
+                key: "key"
+          - name: LDAP_BIND_DN
+            value: {{ .Values.cim.ldap.bindDN }}
+          - name: LDAP_BIND_PASSWORD
+            value: {{ .Values.cim.ldap.bindPassword }}
+          - name: LDAP_BASE_DN
+            value: {{ .Values.cim.ldap.baseDN }}
+          - name: LDAP_HOST_NAME
+            value: {{ .Values.cim.ldap.hostName }}
+          - name: DISPLAY_NAME
+            value: {{ .Values.cim.ldap.displayName }}
+          # License config
+          - name: LICENSE_PATH
+            value: "/config/cim/license/license.dat"
+          - name: KEYGEN_LICENSE_PATH
+            value: "/config/cim/license/license.json"
+          - name: KEYGEN_ENABLED
+            value: {{ .Values.global.keygen.enabled | quote }}
+          - name: FORCE
+            value: {{ .Values.cim.cimweb.updateLicense.force | quote }}
+          - name: UPDATE_LICENSE
+            value: {{ .Values.cim.cimweb.updateLicense.enabled | quote }}
+          - name: UPDATE_LICENSE_PROPERTIES_PATH
+            value: "/config/cim/update-license/config/cim.properties"
+          image: {{ printf "%s/%s:%s%s" (required "A valid image registry entry is required." (.Values.cim.cimtools.registry | default .Values.imageRegistry | default .Values.global.imageRegistry )) (required "A valid image name (.Values.cim.cimtools.image) entry is required." .Values.cim.cimtools.image ) (.Values.cim.cimtools.version | default .Values.imageVersion | default .Values.global.imageVersion) (.Values.imageTagSuffix| default .Values.global.imageTagSuffix) | quote }}
+          imagePullPolicy: {{ .Values.imagePullPolicy | default .Values.global.imagePullPolicy }}
+          resources:
+            {{- toYaml .Values.cim.setupJob.resources | nindent 12 }}
+          volumeMounts:
+            - name: cim-migrate-properties
+              mountPath: /config/cim/cim-migrate.properties
+              subPath: cim-migrate.properties
+            - name: cim-config
+              mountPath: /coverity/config
+            {{- if (index .Values.global "trust-stores").enabled }}
+            - name: trust-store-certs
+              mountPath: /coverity/truststorecerts
+            {{- end }}
+            {{- if .Values.cim.cimweb.updateLicense.enabled }}
+            - name: update-license-properties
+              mountPath: /config/cim/update-license/config/cim.properties
+              subPath: cim.properties
+            - name: license
+              mountPath: /config/cim/license
+            {{- end }}
+            {{- if .Values.extraVolumeMounts }}
+            {{- toYaml .Values.extraVolumeMounts | nindent 12 }}
+            {{- end }}
+            {{- if .Values.global.extraVolumeMounts }}
+            {{- toYaml .Values.global.extraVolumeMounts | nindent 12 }}
+            {{- end }}
+      {{- if or .Values.cim.setupJob.initContainers .Values.onPrem.postgres .Values.global.postgres.jobSidecars }}
+      initContainers:
+      {{- if .Values.onPrem.postgres }}
+      {{- include "cnc.initContainer.waitForPostgres" . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.cim.setupJob.initContainers }}
+      {{- include "common.tplvalues.render" ( dict "value" .Values.cim.setupJob.initContainers "context" $ ) | nindent 8 }}
+      {{- end }}
+      {{- if include "isKubeVersionValid" . }}
+      {{- if .Values.global.postgres.jobSidecars }}
+      {{- include "common.tplvalues.render" ( dict "value" .Values.global.postgres.jobSidecars "context" $ ) | nindent 8 }}
+      {{- end }}
+      {{- end }}
+      {{- end }}
+      volumes:
+        - name: cim-config
+          emptyDir: {}
+        - name: cim-migrate-properties
+          secret:
+            secretName: {{ include "cnc.fullname" . }}-cim-migrate-config
+        {{- if .Values.cim.cimweb.updateLicense.enabled }}
+        - name: update-license-properties
+          secret:
+            secretName: {{ include "cnc.fullname" . }}-cim-updatelicense-config
+        - name: license
+          secret:
+            secretName: {{ required "A valid Coverity license secret name (licenseSecretName) must be provided." (.Values.global.licenseSecretName) }}
+        {{- end }}
+        {{- if (index .Values.global "trust-stores").enabled }}
+        - name: trust-store-certs
+          configMap:
+            name: {{ required "A valid trust-stores configmap name must be provided." ((index .Values.global "trust-stores").configmapName) }}
+        {{- end }}
+        {{- if .Values.cim.setupJob.extraVolumes }}
+        {{- toYaml .Values.cim.setupJob.extraVolumes | nindent 8 }}
+        {{- end }}
+        {{- if .Values.extraVolumes }}
+        {{- toYaml .Values.extraVolumes | nindent 8 }}
+        {{- end }}
+        {{- if .Values.global.extraVolumes }}
+        {{- toYaml .Values.global.extraVolumes | nindent 8 }}
+        {{- end }}
+{{- end }}

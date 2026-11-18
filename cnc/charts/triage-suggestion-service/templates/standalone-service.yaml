@@ -1,0 +1,26 @@
+{{- if .Values.standaloneDeployment }}
+{{- $serviceName := printf "%s-standalone" (include "triage-suggestion-service.fullname" .) }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $serviceName }}
+  labels:
+    {{- include "triage-suggestion-service.labels" . | nindent 4 }}
+    app.kubernetes.io/component: standalone
+spec:
+  type: {{ .Values.services | first | dig "type" "ClusterIP" }}
+  selector:
+    {{- include "triage-suggestion-service.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: standalone
+  ports:
+  {{- range .Values.services }}
+  {{- if eq .name "triage-suggestion-service-standalone" }}
+  {{- range .specs }}
+  - name: {{ .name }}
+    port: {{ .port }}
+    targetPort: {{ .targetPort }}
+    protocol: {{ .protocol }}
+  {{- end }}
+  {{- end }}
+  {{- end }}
+{{- end }}

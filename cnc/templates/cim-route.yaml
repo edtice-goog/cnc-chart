@@ -1,0 +1,91 @@
+{{- if and .Values.cim.cimweb.enabled (hasKey .Values.cim "route") .Values.cim.route .Values.cim.route.enabled (.Capabilities.APIVersions.Has "route.openshift.io/v1") -}}
+{{- $_ :=  set . "serviceName" "cim" }}
+{{- $fullName := include "cnc.fullname" . -}}
+
+{{/* Use ingress configuration by default, allow route overrides */}}
+{{- $hosts := list }}
+{{- if .Values.cim.route.hosts }}
+  {{- $hosts = .Values.cim.route.hosts }}
+{{- else if .Values.cim.ingress.hosts }}
+  {{- $hosts = .Values.cim.ingress.hosts }}
+{{- else if .Values.global.ingress.hosts }}
+  {{- $hosts = .Values.global.ingress.hosts }}
+{{- end }}
+
+{{- $tlsSecrets := list }}
+{{- if and .Values.cim.route.tls .Values.cim.route.tls.secrets }}
+  {{- $tlsSecrets = .Values.cim.route.tls.secrets }}
+{{- else if .Values.cim.ingress.tls }}
+  {{- $tlsSecrets = .Values.cim.ingress.tls }}
+{{- else if .Values.global.ingress.tls }}
+  {{- $tlsSecrets = .Values.global.ingress.tls }}
+{{- end }}
+
+{{- $annotations := dict }}
+{{- if .Values.cim.route.annotations }}
+  {{- $annotations = .Values.cim.route.annotations }}
+{{- end }}
+
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ $fullName }}-cim-route
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "service.labels" . | nindent 4 }}
+  {{- if $annotations }}
+  annotations:
+    {{- toYaml $annotations | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if $hosts }}
+  host: {{ index $hosts 0 }}
+  {{- end }}
+  to:
+    kind: Service
+    name: {{ $fullName }}-{{ .serviceName }}
+    weight: 100
+  port:
+    targetPort: {{ .Values.cim.route.targetPort | default 8080 }}
+  {{- if and $tlsSecrets (index $tlsSecrets 0) }}
+  {{- $tlsSecret := index $tlsSecrets 0 }}
+  {{- $secret := (lookup "v1" "Secret" .Release.Namespace $tlsSecret.secretName) }}
+  tls:
+    {{- $termination := "edge" }}
+    {{- if and .Values.cim.route.tls .Values.cim.route.tls.termination }}
+      {{- $termination = .Values.cim.route.tls.termination }}
+    {{- end }}
+    termination: {{ $termination }}
+    {{- if and $secret $secret.data }}
+    {{/* Try different possible keys for certificate */}}
+    {{- $certData := "" }}
+    {{- $keyData := "" }}
+    {{- if index $secret.data "tls.crt" }}
+      {{- $certData = index $secret.data "tls.crt" }}
+    {{- end }}
+    {{- if index $secret.data "tls.key" }}
+      {{- $keyData = index $secret.data "tls.key" }}
+    {{- end }}
+    {{- if $certData }}
+    certificate: |
+{{ $certData | b64dec | nindent 6 }}
+    {{- end }}
+    {{- if $keyData }}
+    key: |
+{{ $keyData | b64dec | nindent 6 }}
+    {{- end }}
+    {{- end }}
+    {{- $insecurePolicy := "" }}
+    {{- if and .Values.cim.route.tls .Values.cim.route.tls.insecureEdgeTerminationPolicy }}
+      {{- $insecurePolicy = .Values.cim.route.tls.insecureEdgeTerminationPolicy }}
+    {{- end }}
+    {{- if $insecurePolicy }}
+    insecureEdgeTerminationPolicy: {{ $insecurePolicy }}
+    {{- end }}
+  {{- end }}
+  {{- $wildcardPolicy := "None" }}
+  {{- if .Values.cim.route.wildcardPolicy }}
+    {{- $wildcardPolicy = .Values.cim.route.wildcardPolicy }}
+  {{- end }}
+  wildcardPolicy: {{ $wildcardPolicy }}
+{{- end }}

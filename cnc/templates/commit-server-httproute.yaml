@@ -1,0 +1,70 @@
+{{- $_ := set . "serviceName" "commit-server" }}
+{{- $fullName := include "cnc.fullname" . -}}
+{{- $pgpoolEnabled := and .Values.cim.pgpool.enabled (gt (int .Values.cim.pgpool.replicas) 0) }}
+{{- $csIsDeployed := and (gt (int .Values.cim.cimweb.replicas) 1) (gt (int (index .Values.cim .serviceName).replicas) 0) .Values.cim.cimweb.enabled }}
+{{- $useTLS := or (index .Values "scan-services").enabled .Values.cim.cimweb.tlsSidecar.enabled }}
+
+{{/* Render when gateway is enabled and commit-server is deployed */}}
+{{- if .Values.cim.gateway.enabled -}}
+{{- if or $csIsDeployed $pgpoolEnabled -}}
+{{- $gw := .Values.cim.gateway }}
+{{- $gatewayName := $gw.name | default (printf "%s-cim-gateway" $fullName) }}
+{{- $path := $gw.ccdPath | default .Values.cim.ingress.ccdPath | default .Values.global.ingress.ccdPath | default "/ccd" }}
+{{- $sectionName := $gw.sectionName | default (ternary "https" "http" $gw.listeners.https.enabled) }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  labels:
+    {{- include "service.labels" . | nindent 4 }}
+  name: {{ $fullName }}-commit-server
+  namespace: {{ .Release.Namespace }}
+spec:
+  parentRefs:
+    - name: {{ $gatewayName }}
+      namespace: {{ $gw.namespace | default .Release.Namespace }}
+      sectionName: {{ $sectionName }}
+  {{- $hostnames := $gw.hostnames | default .Values.global.gateway.hostnames }}
+  {{- if $hostnames }}
+  hostnames:
+    {{- toYaml $hostnames | nindent 4 }}
+  {{- end }}
+  rules:
+    - matches:
+        - path:
+            type: {{ $gw.pathType | default "PathPrefix" }}
+            value: {{ $path }}
+      backendRefs:
+        - name: {{ $fullName }}-commit-server
+          port: 8080
+          {{- if $gw.backendWeight }}
+          weight: {{ $gw.backendWeight }}
+          {{- end }}
+      {{- include "cnc.gateway.ruleFilters" (dict "gw" $gw "fullName" $fullName "isNGF" (include "cnc.gateway.isNGF" .)) | nindent 6 }}
+    {{- if $pgpoolEnabled }}
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /desktop-analysis
+      backendRefs:
+        - name: {{ $fullName }}-commit-server
+          port: 8080
+      {{- include "cnc.gateway.ruleFilters" (dict "gw" $gw "fullName" $fullName "isNGF" (include "cnc.gateway.isNGF" .)) | nindent 6 }}
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /api/v2/triageStores
+      backendRefs:
+        - name: {{ $fullName }}-commit-server
+          port: 8080
+      {{- include "cnc.gateway.ruleFilters" (dict "gw" $gw "fullName" $fullName "isNGF" (include "cnc.gateway.isNGF" .)) | nindent 6 }}
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /api/v2/componentMaps
+      backendRefs:
+        - name: {{ $fullName }}-commit-server
+          port: 8080
+      {{- include "cnc.gateway.ruleFilters" (dict "gw" $gw "fullName" $fullName "isNGF" (include "cnc.gateway.isNGF" .)) | nindent 6 }}
+    {{- end }}
+{{- end }}
+{{- end }}

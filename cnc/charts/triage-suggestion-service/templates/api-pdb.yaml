@@ -1,0 +1,20 @@
+{{- if and .Values.deployment .Values.podDisruptionBudget.api.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "triage-suggestion-service.fullname" . }}-api
+  labels:
+    {{- include "triage-suggestion-service.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  {{- if .Values.podDisruptionBudget.api.minAvailable }}
+  minAvailable: {{ .Values.podDisruptionBudget.api.minAvailable }}
+  {{- end }}
+  {{- if .Values.podDisruptionBudget.api.maxUnavailable }}
+  maxUnavailable: {{ .Values.podDisruptionBudget.api.maxUnavailable }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "triage-suggestion-service.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: api
+{{- end }}

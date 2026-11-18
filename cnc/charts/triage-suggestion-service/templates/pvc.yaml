@@ -1,0 +1,34 @@
+{{- if and (or .Values.deployment .Values.workerDeployment) .Values.volumes.pvc.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "triage-suggestion-service.fullname" . }}-workdirs
+  labels:
+    {{- include "triage-suggestion-service.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    {{- toYaml .Values.volumes.pvc.workdirs.accessModes | nindent 4 }}
+  resources:
+    requests:
+      storage: {{ .Values.volumes.pvc.workdirs.size }}
+  {{- if .Values.volumes.pvc.workdirs.storageClass }}
+  storageClassName: {{ .Values.volumes.pvc.workdirs.storageClass }}
+  {{- end }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "triage-suggestion-service.fullname" . }}-artifacts
+  labels:
+    {{- include "triage-suggestion-service.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    {{- toYaml .Values.volumes.pvc.artifacts.accessModes | nindent 4 }}
+  resources:
+    requests:
+      storage: {{ .Values.volumes.pvc.artifacts.size }}
+  {{- if .Values.volumes.pvc.artifacts.storageClass }}
+  storageClassName: {{ .Values.volumes.pvc.artifacts.storageClass }}
+  {{- end }}
+{{- end }}

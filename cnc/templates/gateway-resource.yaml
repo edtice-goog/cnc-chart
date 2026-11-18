@@ -1,0 +1,55 @@
+{{- if .Values.cim.gateway.create -}}
+{{- $fullName := include "cnc.fullname" . -}}
+{{- $gw := .Values.cim.gateway }}
+{{- $gatewayName := $gw.name | default (printf "%s-cim-gateway" .Release.Name) }}
+{{- $gatewayNameSpace := $gw.namespace | default .Release.Namespace }}
+{{- $hostname := $gw.hostnames | first | default "" }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: {{ $gatewayName }}
+  namespace: {{ $gatewayNameSpace }}
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+  {{- with $gw.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+
+spec:
+  gatewayClassName: {{ required "cim.gateway.gatewayClassName is required when cim.gateway.create=true" $gw.gatewayClassName }}
+  {{- if and (eq (include "cnc.gateway.isAWS" .) "true") $gw.lbConfigName }}
+  infrastructure:
+    parametersRef:
+      kind: LoadBalancerConfiguration
+      name: {{ $gw.lbConfigName }}
+      group: gateway.k8s.aws
+  {{- end }}
+  listeners:
+    {{- if $gw.listeners.http.enabled }}
+    - name: http
+      {{- if $hostname }}
+      hostname: {{ $hostname | quote }}
+      {{- end }}
+      port: {{ $gw.listeners.http.port }}
+      protocol: HTTP
+      allowedRoutes:
+        namespaces:
+          from: {{ if $gw.listeners.http.shared }}All{{ else }}Same{{ end }}
+    {{- end }}
+    {{- if $gw.listeners.https.enabled }}
+    - name: https
+      {{- if $hostname }}
+      hostname: {{ $hostname | quote }}
+      {{- end }}
+      port: {{ $gw.listeners.https.port }}
+      protocol: HTTPS
+      tls:
+        certificateRefs:
+          - name: {{ required "cim.gateway.listeners.https.tlsSecretName is required when https listener is enabled" $gw.listeners.https.tlsSecretName }}
+            kind: Secret
+      allowedRoutes:
+        namespaces:
+          from: {{ if $gw.listeners.https.shared }}All{{ else }}Same{{ end }}
+    {{- end }}
+{{- end }}

@@ -1,0 +1,31 @@
+apiVersion: v2
+appVersion: 2026.9.0
+dependencies:
+- alias: postgresql
+  condition: onPrem.postgres
+  name: postgresql
+  repository: oci://registry-1.docker.io/bitnamicharts
+  version: 18.6.5
+- condition: onPrem.minio
+  name: minio
+  repository: oci://registry-1.docker.io/bitnamicharts
+  version: 17.0.21
+- condition: onPrem.redis
+  name: redis
+  repository: oci://registry-1.docker.io/bitnamicharts
+  version: 27.0.10
+- condition: scan-services.enabled
+  name: scan-services
+  repository: oci://repo.blackduck.com/cloudnative
+  version: 2026.9.0
+- condition: triage-suggestion-service.enabled
+  name: triage-suggestion-service
+  repository: oci://repo.blackduck.com/cloudnative
+  version: 2026.9.0
+description: Cloud Native Coverity
+keywords:
+- Coverity
+kubeVersion: '>= 1.31.0-0'
+name: cnc
+type: application
+version: 2026.9.0

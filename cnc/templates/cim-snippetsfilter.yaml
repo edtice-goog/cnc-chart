@@ -1,0 +1,19 @@
+{{- if and .Values.cim.gateway.enabled .Values.cim.gateway.allowedSourceRanges (eq (include "cnc.gateway.isNGF" .) "true") -}}
+{{- $_ := set . "serviceName" "cim" }}
+{{- $fullName := include "cnc.fullname" . -}}
+apiVersion: gateway.nginx.org/v1alpha1
+kind: SnippetsFilter
+metadata:
+  labels:
+    {{- include "service.labels" . | nindent 4 }}
+  name: {{ $fullName }}-cim-ip-allowlist
+  namespace: {{ .Release.Namespace }}
+spec:
+  snippets:
+  - context: http.server.location
+    value: |
+      {{- range .Values.cim.gateway.allowedSourceRanges }}
+      allow {{ . }};
+      {{- end }}
+      deny all;
+{{- end }}

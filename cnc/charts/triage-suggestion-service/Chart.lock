@@ -1,0 +1,9 @@
+dependencies:
+- name: rabbitmq
+  repository: oci://us-docker.pkg.dev/coverity-cloud-sandbox-dev/cnc-dev/charts/bitnami
+  version: 16.0.14
+- name: vault
+  repository: oci://us-docker.pkg.dev/coverity-cloud-sandbox-dev/cnc-dev/charts/hashicorp
+  version: 0.32.0
+digest: sha256:b548c7dbfb3813bb89465b95c9da1eeed1cdfaa743b5e578778119107997e231
+generated: "2026-03-09T14:42:15.4585567-06:00"

@@ -1,0 +1,79 @@
+{{- if .Values.cim.gateway.enabled -}}
+{{- $_ := set . "serviceName" "cim" }}
+{{- $fullName := include "cnc.fullname" . -}}
+{{- $gw := .Values.cim.gateway -}}
+{{- $gatewayName := $gw.name | default (printf "%s-cim-gateway" $fullName) }}
+{{- $httpsEnabled := $gw.listeners.https.enabled }}
+{{- $httpEnabled := $gw.listeners.http.enabled }}
+{{/* Auto-derive sectionName: https when HTTPS listener is enabled, http otherwise */}}
+{{- $sectionName := $gw.sectionName | default (ternary "https" "http" $httpsEnabled) }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  labels:
+    {{- include "service.labels" . | nindent 4 }}
+  name: {{ $fullName }}-cim
+  namespace: {{ .Release.Namespace }}
+spec:
+  parentRefs:
+    {{- if .Values.cim.gateway.sectionName }}
+    - name: {{ $gatewayName }}
+      namespace: {{ $gw.namespace | default .Release.Namespace }}
+      sectionName: {{ .Values.cim.gateway.sectionName }}
+    {{- else if and $httpEnabled (not $gw.listeners.http.redirect) }}
+    - name: {{ $gatewayName }}
+      namespace: {{ $gw.namespace | default .Release.Namespace }}
+      sectionName: http
+    {{- end }}
+    {{- if $httpsEnabled }}
+    - name: {{ $gatewayName }}
+      namespace: {{ $gw.namespace | default .Release.Namespace }}
+      sectionName: https
+    {{- end }}
+  {{- $hostnames := $gw.hostnames | default .Values.global.gateway.hostnames }}
+  {{- if $hostnames }}
+  hostnames:
+    {{- toYaml $hostnames | nindent 4 }}
+  {{- end }}
+  rules:
+    - matches:
+        - path:
+            type: {{ $gw.pathType | default "PathPrefix" }}
+            value: {{ $gw.path | default "/" }}
+      backendRefs:
+        - name: {{ $fullName }}-cim
+          port: 8080
+          {{- if $gw.backendWeight }}
+          weight: {{ $gw.backendWeight }}
+          {{- end }}
+      {{- include "cnc.gateway.ruleFilters" (dict "gw" $gw "fullName" $fullName "isNGF" (include "cnc.gateway.isNGF" .)) | nindent 6 }}
+{{- if and $httpEnabled $httpsEnabled $gw.listeners.http.redirect }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  labels:
+    {{- include "service.labels" . | nindent 4 }}
+  name: {{ $fullName }}-http-redirect
+  namespace: {{ .Release.Namespace }}
+spec:
+  parentRefs:
+    - name: {{ $gatewayName }}
+      namespace: {{ $gw.namespace | default .Release.Namespace }}
+      sectionName: http
+  {{- if $hostnames }}
+  hostnames:
+    {{- toYaml $hostnames | nindent 4 }}
+  {{- end }}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      filters:
+        - type: RequestRedirect
+          requestRedirect:
+            scheme: https
+            statusCode: 301
+{{- end }}
+{{- end }}
