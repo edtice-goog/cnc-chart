@@ -77,6 +77,26 @@ each service restarts once a year, at the scheduled time, 30 days ahead of the e
 
 A `helm upgrade` that changes nothing renews nothing and restarts nothing.
 
+## nginx updates
+
+The TLS sidecar in front of Connect (`cim.cimweb.tlsSidecar`) is nginx, and so is the image the keeper runs in. The
+chart doesn't pin an nginx release: `tlsSidecar.version` is `stable`, nginx's stable branch, from Docker Hub's official
+image (`docker.io/library/nginx`), pulled with `Always` (`tlsSidecar.imagePullPolicy`). Every start of the sidecar or of the keeper takes the image the tag names at that
+moment, so nginx's fixes arrive without a new chart.
+
+The sidecar starts rarely, though: only when Connect restarts. So at each run (the post hook and the CronJob), the
+keeper compares the image its own pod has just pulled with the one each sidecar runs. When a sidecar runs an older
+image, the keeper restarts its Deployment, the same way as for a certificate (`cim` and `commit-server` are
+`Recreate`: about two minutes). It waits while analysis jobs run (`restarts.waitForScans`). There's no deadline, so a
+run that finds a scan leaves the restart to the next run.
+
+| Value (`cim.cimweb.tlsSidecar.`) | Default | What |
+|---|---|---|
+| `version` | `stable` | the nginx tag. Keep a Debian-based one (not `-alpine`): the keeper needs bash, openssl and curl. A release such as `1.30.7` pins it again |
+| `imagePullPolicy` | `Always` | for the sidecar, and for the keeper when it runs in this image. Empty: `imagePullPolicy`, then `global.imagePullPolicy` |
+| `restartOnUpdate` | `true` | the keeper's restart for a newer nginx. It's off whenever `imagePullPolicy` isn't `Always` or the keeper has its own `global.certificates.image`, because then its own pull says nothing about the tag |
+| `registry`, `image` | `docker.io/library`, `nginx` | where nginx comes from: Docker Hub's official image, which publishes `stable` (Black Duck's registry carries only the release the vendor's chart pinned). `registry` comes before `imageRegistry` and `global.imageRegistry`: an installation that mirrors the chart's images sets it to its mirror (`""` uses `imageRegistry`), and the mirror must keep the tag current |
+
 ## The CA rotation (`builtIn`)
 
 A new CA can't take over in one step: services that still trust only the old one would reject certificates from the

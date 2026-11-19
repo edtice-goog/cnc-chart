@@ -51,7 +51,7 @@ spec:
         {{- if $useTLS }}
         - name: tls-sidecar
           image: {{ include "tlsSidecar.image.name" . }}
-          imagePullPolicy: {{ .Values.imagePullPolicy | default .Values.global.imagePullPolicy }}
+          imagePullPolicy: {{ include "tlsSidecar.image.pullPolicy" . }}
           {{- include "cnc.securityContext.container" (dict "containerName" "tlsSidecar" "Values" .Values.cim.cimweb "Capabilities" .Capabilities) | indent 10 }}
           ports:
             {{- include "tlsSidecar.common.ports" . | indent 12 }}
