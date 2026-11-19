@@ -513,6 +513,18 @@
                                 "null"
                             ]
                         },
+                        "tomcat": {
+                            "type": "object",
+                            "properties": {
+                                "connectionTimeout": {
+                                    "type": [
+                                        "string",
+                                        "integer",
+                                        "null"
+                                    ]
+                                }
+                            }
+                        },
                         "logLevel": {
                             "type": [
                                 "string",
@@ -836,6 +848,23 @@
                                 "string",
                                 "null"
                             ]
+                        },
+                        "timeouts": {
+                            "type": "object",
+                            "properties": {
+                                "request": {
+                                    "type": [
+                                        "string",
+                                        "null"
+                                    ]
+                                },
+                                "backendRequest": {
+                                    "type": [
+                                        "string",
+                                        "null"
+                                    ]
+                                }
+                            }
                         },
                         "sectionName": {
                             "type": [
