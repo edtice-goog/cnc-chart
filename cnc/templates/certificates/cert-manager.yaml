@@ -1,0 +1,84 @@
+{{- /*
+global.certificates.mode certManager: cert-manager issues the internal certificates into the same Secrets.
+  - a self-signed Issuer makes the CA (<release>-ca-x509), which keeps its key when cert-manager renews it
+    (rotationPolicy Never), so everything it signed stays valid across a CA renewal;
+  - a CA Issuer signs the service certificates from it; scan-service is a CA too and has its own Issuer for admin.
+The keeper's pre hook first recreates Secrets an older chart made (type Opaque) as kubernetes.io/tls, the only type
+cert-manager writes; the keeper's CronJob restarts what reads a renewed certificate.
+*/ -}}
+{{- if and (include "cnc.certificates.enabled" .) (eq (include "cnc.certificates.mode" .) "certManager") }}
+{{- if not (.Capabilities.APIVersions.Has "cert-manager.io/v1") }}
+{{- fail "global.certificates.mode is certManager, but this cluster has no cert-manager (cert-manager.io/v1). Install cert-manager first, or use mode builtIn." }}
+{{- end }}
+{{- $f := include "cnc.fullname" . }}
+{{- $c := .Values.global.certificates }}
+{{- $key := dict "algorithm" "RSA" "size" (int $c.privateKey.size) "encoding" (ternary "PKCS8" "PKCS1" (eq ($c.privateKey.format | default "pkcs1") "pkcs8")) }}
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ $f }}-selfsigned
+  namespace: {{ .Release.Namespace }}
+spec:
+  selfSigned: {}
+{{- range $line := splitList "\n" (include "cnc.certificates.list" .) }}
+{{- if $line }}
+{{- $p := splitList "|" $line }}
+{{- $secret := index $p 0 }}{{ $cn := index $p 1 }}{{ $issuer := index $p 2 }}{{ $kind := index $p 3 }}
+{{- $usages := list }}
+{{- range splitList "," (index $p 4) }}{{ $usages = append $usages (printf "%s auth" .) }}{{ end }}
+{{- if ne $kind "leaf" }}{{ $usages = concat (list "cert sign" "crl sign" "digital signature" "key encipherment") $usages }}{{ else }}{{ $usages = concat (list "digital signature" "key encipherment") $usages }}{{ end }}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ trimSuffix "-x509" $secret }}
+  namespace: {{ $.Release.Namespace }}
+spec:
+  secretName: {{ $secret }}
+  commonName: {{ $cn | quote }}
+  subject:
+    countries: ["US"]
+    organizations: ["00000000-0000-0000-0000-000000000000"]
+  {{- /* only real DNS names: the CA's "CNC Certificate Authority" isn't one, and cert-manager takes none other */}}
+  {{- $dns := list }}{{ range splitList "," (index $p 5) }}{{ if regexMatch "^[A-Za-z0-9.-]+$" . }}{{ $dns = append $dns . }}{{ end }}{{ end }}
+  {{- with $dns }}
+  dnsNames:
+    {{- range . }}
+    - {{ . }}
+    {{- end }}
+  {{- end }}
+  isCA: {{ ne $kind "leaf" }}
+  usages:
+    {{- toYaml $usages | nindent 4 }}
+  {{- if eq $kind "ca" }}
+  duration: {{ $c.ca.duration }}
+  renewBefore: {{ $c.ca.renewBefore }}
+  privateKey:
+    {{- toYaml (merge (dict "rotationPolicy" "Never") $key) | nindent 4 }}
+  issuerRef:
+    name: {{ $f }}-selfsigned
+    kind: Issuer
+  {{- else }}
+  duration: {{ $c.duration }}
+  renewBefore: {{ $c.renewBefore }}
+  privateKey:
+    {{- toYaml (merge (dict "rotationPolicy" "Always") $key) | nindent 4 }}
+  issuerRef:
+    name: {{ trimSuffix "-x509" $issuer }}
+    kind: Issuer
+  {{- end }}
+{{- if ne $kind "leaf" }}
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ trimSuffix "-x509" $secret }}
+  namespace: {{ $.Release.Namespace }}
+spec:
+  ca:
+    secretName: {{ $secret }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

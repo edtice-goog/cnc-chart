@@ -40,6 +40,115 @@
                         "null"
                     ]
                 },
+                "certificates": {
+                    "type": "object",
+                    "description": "The internal mTLS certificates (Secrets <release>-*-x509). See the chart README, Internal certificates.",
+                    "properties": {
+                        "mode": {
+                            "type": "string",
+                            "enum": [
+                                "builtIn",
+                                "certManager",
+                                "external"
+                            ]
+                        },
+                        "duration": {
+                            "type": "string",
+                            "pattern": "^([0-9]+[dhms])+$"
+                        },
+                        "renewBefore": {
+                            "type": "string",
+                            "pattern": "^([0-9]+[dhms])+$"
+                        },
+                        "ca": {
+                            "type": "object",
+                            "properties": {
+                                "duration": {
+                                    "type": "string",
+                                    "pattern": "^([0-9]+[dhms])+$"
+                                },
+                                "renewBefore": {
+                                    "type": "string",
+                                    "pattern": "^([0-9]+[dhms])+$"
+                                },
+                                "rotation": {
+                                    "type": [
+                                        "string",
+                                        "null"
+                                    ]
+                                }
+                            }
+                        },
+                        "privateKey": {
+                            "type": "object",
+                            "properties": {
+                                "size": {
+                                    "type": "integer",
+                                    "enum": [
+                                        2048,
+                                        3072,
+                                        4096
+                                    ]
+                                },
+                                "format": {
+                                    "type": "string",
+                                    "enum": [
+                                        "pkcs1",
+                                        "pkcs8"
+                                    ]
+                                }
+                            }
+                        },
+                        "schedule": {
+                            "type": "string"
+                        },
+                        "timeZone": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "restarts": {
+                            "type": "object",
+                            "properties": {
+                                "waitForScans": {
+                                    "type": "boolean"
+                                },
+                                "forceBefore": {
+                                    "type": "string",
+                                    "pattern": "^([0-9]+[dhms])+$"
+                                },
+                                "scanJobSelector": {
+                                    "type": [
+                                        "string",
+                                        "null"
+                                    ]
+                                }
+                            }
+                        },
+                        "image": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "resources": {
+                            "type": "object"
+                        },
+                        "nodeSelector": {
+                            "type": "object"
+                        },
+                        "tolerations": {
+                            "type": "array"
+                        },
+                        "podSecurityContext": {
+                            "type": "object"
+                        },
+                        "containerSecurityContext": {
+                            "type": "object"
+                        }
+                    }
+                },
                 "keygen": {
                     "type": "object",
                     "properties": {

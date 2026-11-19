@@ -1,0 +1,123 @@
+{{- /*
+The certificate keeper (global.certificates): files/certificates/keeper.sh, run
+  - before every install and upgrade (hook "pre"): the certificates exist and are valid before anything starts;
+  - after every install and upgrade (hook "post"): what still runs with old certificates is restarted;
+  - on global.certificates.schedule (CronJob): renewals, restarts and the report.
+The hooks get their own ServiceAccount, Role and ConfigMap, since the release's own objects don't exist yet before an
+install. The CronJob uses the release's objects.
+*/ -}}
+{{- if include "cnc.certificates.enabled" . }}
+{{- include "cnc.certificates.validate" . }}
+{{- $f := include "cnc.fullname" . }}
+{{- range $kind := list "hook" "release" }}
+{{- $name := ternary (printf "%s-certificates-hook" $f) (printf "%s-certificates" $f) (eq $kind "hook") }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $name }}
+  namespace: {{ $.Release.Namespace }}
+  {{- if eq $kind "hook" }}
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade,post-install,post-upgrade
+    helm.sh/hook-weight: "-14"
+    helm.sh/hook-delete-policy: before-hook-creation
+  {{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $name }}
+  namespace: {{ $.Release.Namespace }}
+  {{- if eq $kind "hook" }}
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade,post-install,post-upgrade
+    helm.sh/hook-weight: "-14"
+    helm.sh/hook-delete-policy: before-hook-creation
+  {{- end }}
+rules:
+  {{- include "cnc.certificates.rules" $ | nindent 2 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $name }}
+  namespace: {{ $.Release.Namespace }}
+  {{- if eq $kind "hook" }}
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade,post-install,post-upgrade
+    helm.sh/hook-weight: "-14"
+    helm.sh/hook-delete-policy: before-hook-creation
+  {{- end }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ $name }}
+    namespace: {{ $.Release.Namespace }}
+roleRef:
+  kind: Role
+  name: {{ $name }}
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}
+  namespace: {{ $.Release.Namespace }}
+  {{- if eq $kind "hook" }}
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade,post-install,post-upgrade
+    helm.sh/hook-weight: "-14"
+    helm.sh/hook-delete-policy: before-hook-creation
+  {{- end }}
+data:
+  {{- include "cnc.certificates.configData" $ | nindent 2 }}
+{{- end }}
+{{- range $run := list "pre" "post" }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ $f }}-certificates-{{ $run }}
+  namespace: {{ $.Release.Namespace }}
+  annotations:
+    helm.sh/hook: {{ ternary "pre-install,pre-upgrade" "post-install,post-upgrade" (eq $run "pre") }}
+    helm.sh/hook-weight: "-13"
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 900
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ $f }}-certificates
+        app.kubernetes.io/instance: {{ $.Release.Name }}
+    spec:
+      {{- include "cnc.certificates.pod" (dict "ctx" $ "run" $run "sa" (printf "%s-certificates-hook" $f) "cm" (printf "%s-certificates-hook" $f)) | nindent 6 }}
+{{- end }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ $f }}-certificates
+  namespace: {{ .Release.Namespace }}
+spec:
+  schedule: {{ .Values.global.certificates.schedule | quote }}
+  {{- with .Values.global.certificates.timeZone }}
+  timeZone: {{ . | quote }}
+  {{- end }}
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 900
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: {{ $f }}-certificates
+            app.kubernetes.io/instance: {{ .Release.Name }}
+        spec:
+          {{- include "cnc.certificates.pod" (dict "ctx" . "run" "cron" "sa" (printf "%s-certificates" $f) "cm" (printf "%s-certificates" $f)) | nindent 10 }}
+{{- end }}

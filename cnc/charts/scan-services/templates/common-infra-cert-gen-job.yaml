@@ -1,3 +1,6 @@
+{{- /* The parent chart (cnc) issues and renews these certificates itself when global.certificates.mode is set (its
+     templates/certificates). This generator only makes missing Secrets, valid 365 days, and renews nothing. */ -}}
+{{- if not (dig "certificates" "mode" "" (.Values.global | default dict)) }}
 {{- $_ :=  set . "serviceName" "common-infra" }}
 {{- $cimServiceName := "cim" }}
 {{- $cimCcdServiceName := "commit-server" }}
@@ -301,3 +304,5 @@ data:
                   san:
                   type:
                     - client
+
+{{- end }}
