@@ -716,6 +716,17 @@
                                                 "string",
                                                 "null"
                                             ]
+                                        },
+                                        "proxy_buffering": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ],
+                                            "enum": [
+                                                "on",
+                                                "off",
+                                                null
+                                            ]
                                         }
                                     }
                                 }
