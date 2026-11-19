@@ -50,6 +50,11 @@ spec:
     {{- if .Values.minioGateway.gateway.filters }}
       {{- toYaml .Values.minioGateway.gateway.filters | nindent 6 }}
     {{- end }}
+    {{- /* uploads take long too: minioGateway.gateway.timeouts, else cim.gateway.timeouts */}}
+    {{- with (.Values.minioGateway.gateway.timeouts | default .Values.cim.gateway.timeouts) }}
+    timeouts:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
     backendRefs:
     - name: {{ .Values.minioGateway.fullnameOverride | default "minio" }}
       port: {{ $backendPort }}

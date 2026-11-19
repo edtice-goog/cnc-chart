@@ -484,6 +484,14 @@ cim:
     # to see default options
     javaOpts: ""
 
+    # Connect's embedded Tomcat (Spring Boot): how long a read or a blocked write may make no progress before Tomcat
+    # closes the connection (server.tomcat.connection-timeout). Empty: Spring Boot's default, 60s. A proxy in front of
+    # Connect that buffers whole downloads and stops reading for longer than this cuts large downloads; streaming
+    # (tlsSidecar.nginxConfig.proxy_buffering "off", a small Envoy buffer limit) is the fix, a longer timeout only
+    # moves the limit.
+    tomcat:
+      connectionTimeout: ""
+
     # log level to use
     logLevel: "INFO"
 
@@ -706,6 +714,13 @@ cim:
 
     # optional: traffic weight for canary deployments
     backendWeight: null
+
+    # optional: HTTPRoute timeouts for every route rule (Gateway API "timeouts", an extended feature: check that your
+    # implementation supports it). Envoy Gateway applies Envoy's default 15 s route timeout when this is empty, which
+    # cuts every download that takes longer, such as the analysis kits on Connect's Downloads page. "0s" disables it:
+    #   timeouts:
+    #     request: "0s"
+    timeouts: {}
 
     # optional: raw HTTPRoute filters applied to every route rule (escape hatch for anything
     # not covered by the named fields below).

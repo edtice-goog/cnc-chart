@@ -287,7 +287,9 @@ prometheus.io/path: {{ printf "/%smetrics" (include "cim.contextPath" .) | quote
 - name: PROPERTIES_PATH
   value: "/config/cim/cim.properties"
 - name: JAVA_OPTS
-  value: {{ .Values.cim.cimweb.javaOpts | quote }}
+  {{- /* cim.cimweb.tomcat.connectionTimeout: Spring Boot's server.tomcat.connection-timeout (CNC's Connect has no server.xml) */}}
+  {{- $tomcatTimeout := dig "tomcat" "connectionTimeout" "" .Values.cim.cimweb }}
+  value: {{ trim (printf "%s%s" (.Values.cim.cimweb.javaOpts | default "") (ternary (printf " -Dserver.tomcat.connection-timeout=%s" (toString $tomcatTimeout)) "" (ne (toString $tomcatTimeout) ""))) | quote }}
 - name: CONTEXT_PATH
   value: {{ .Values.cim.cimweb.contextPath | quote }}
 - name: LOAD_CERT_INTO_KEYSTORE
@@ -631,6 +633,11 @@ filters:
       kind: SnippetsFilter
       name: {{ $fullName }}-cim-ip-allowlist
   {{- end }}
+{{- end -}}
+{{- /* cim.gateway.timeouts: the rule's Gateway API timeouts (Envoy Gateway's 15 s default cuts long downloads) */ -}}
+{{- with $gw.timeouts }}
+timeouts:
+  {{- toYaml . | nindent 2 }}
 {{- end -}}
 {{- end -}}
 
