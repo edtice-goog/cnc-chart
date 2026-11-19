@@ -90,6 +90,18 @@ deployment|secret:<name>,configmap:<name>
 {{- if $c.image }}{{ $c.image }}{{ else }}{{ include "tlsSidecar.image.name" . | trim }}{{ end -}}
 {{- end }}
 
+{{/* The keeper's pull policy: the sidecar's when it runs in the sidecar's image. */}}
+{{- define "cnc.certificates.pullPolicy" -}}
+{{- if .Values.global.certificates.image }}{{ .Values.imagePullPolicy | default .Values.global.imagePullPolicy }}{{ else }}{{ include "tlsSidecar.image.pullPolicy" . | trim }}{{ end -}}
+{{- end }}
+
+{{/* "true" when the keeper restarts sidecars that run an older nginx: it runs in the sidecar's image, pulled with
+     Always, so its own pod has the image the tag names now (cim.cimweb.tlsSidecar.restartOnUpdate). */}}
+{{- define "cnc.certificates.nginxUpdates" -}}
+{{- $s := .Values.cim.cimweb.tlsSidecar -}}
+{{- if and (ne (toString $s.restartOnUpdate) "false") (not .Values.global.certificates.image) (eq (include "tlsSidecar.image.pullPolicy" . | trim) "Always") }}true{{ else }}false{{ end -}}
+{{- end }}
+
 {{/* The keeper's role: its own Secrets and ConfigMaps by name, the consumers' Deployments, pods and jobs to read. */}}
 {{- define "cnc.certificates.rules" -}}
 {{- $f := include "cnc.fullname" . -}}
@@ -149,7 +161,7 @@ tolerations:
 containers:
   - name: keeper
     image: {{ include "cnc.certificates.image" $ }}
-    imagePullPolicy: {{ $.Values.imagePullPolicy | default $.Values.global.imagePullPolicy }}
+    imagePullPolicy: {{ include "cnc.certificates.pullPolicy" $ }}
     command: ["/bin/bash", "/etc/cnc-certificates/keeper.sh"]
     env:
       - name: MODE
@@ -182,6 +194,12 @@ containers:
         value: {{ $c.restarts.forceBefore | quote }}
       - name: SCAN_JOB_SELECTOR
         value: {{ $c.restarts.scanJobSelector | default "" | quote }}
+      - name: NGINX_UPDATES
+        value: {{ include "cnc.certificates.nginxUpdates" $ | quote }}
+      - name: POD_NAME
+        valueFrom:
+          fieldRef:
+            fieldPath: metadata.name
     resources:
       {{- toYaml $c.resources | nindent 6 }}
     securityContext:

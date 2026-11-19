@@ -573,11 +573,26 @@ cim:
       # The image name to use
       image: "nginx"
 
-      # The image registry to use
-      registry: ""
+      # The image registry to use: Docker Hub's official nginx, which publishes the stable tag (Black Duck's registry
+      # carries only the release the vendor's chart pinned). A registry that mirrors the chart's images sets its own
+      # address here, because this value comes before imageRegistry and global.imageRegistry; "" uses them.
+      registry: "docker.io/library"
 
-      # The image version to use
-      version: "1.30.4"
+      # The image version to use: a tag that follows nginx's stable branch, so the sidecar gets nginx's fixes without a
+      # new chart. Keep a Debian-based tag (not -alpine): the certificate keeper runs in this image and needs bash,
+      # openssl and curl. A fixed release (e.g. "1.30.7") pins it again.
+      version: "stable"
+
+      # Pull policy of the sidecar, and of the certificate keeper when it runs in this image. Always: every start takes
+      # the image the tag names now; with IfNotPresent a node keeps the copy it pulled first. Empty: imagePullPolicy,
+      # then global.imagePullPolicy.
+      imagePullPolicy: "Always"
+
+      # The certificate keeper (global.certificates) also restarts the Deployments whose sidecar runs an older image
+      # than the tag names now, at the same moments and with the same wait for analysis jobs as a certificate restart.
+      # It needs imagePullPolicy Always and the keeper in this image (global.certificates.image empty). false: a new
+      # nginx arrives only with an upgrade or another restart.
+      restartOnUpdate: true
 
       # this will enable the tlsSidecar
       enabled: false
