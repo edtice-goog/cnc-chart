@@ -1,6 +1,6 @@
 # Cloud Native Coverity Helm chart, with renewing internal certificates
 
-Black Duck's Cloud Native Coverity chart (`cnc`) as published, with three changes on top, until the product ships them
+Black Duck's Cloud Native Coverity chart (`cnc`) as published, with four changes on top, until the product ships them
 itself:
 
 1. **The internal certificates renew.** Charts up to 2026.9.1 made the eight mTLS certificates between Connect and the
@@ -13,6 +13,9 @@ itself:
    (`cim.cimweb.tlsSidecar.nginxConfig.proxy_buffering: "off"`); before, downloads over about 1.1 GB failed.
 3. **Gateway API route timeouts and Tomcat's connection timeout are values** (`cim.gateway.timeouts`,
    `cim.cimweb.tomcat.connectionTimeout`). Envoy Gateway's 15-second default route timeout cut long downloads.
+4. **nginx isn't pinned.** The TLS sidecar (and the certificate keeper, which runs in its image) follows nginx's
+   `stable` tag, pulled with `Always`, and the keeper restarts the sidecar when a newer nginx is out. The vendor's chart
+   pins a patch release (1.30.4) that only a new chart can change. See `cnc/CERTIFICATES.md`, "nginx updates".
 
 Everything else is the vendor's chart, unchanged.
 
@@ -37,6 +40,6 @@ helm package cnc                      # cnc-<version>.tgz
 helm upgrade --install cnc ./cnc-<version>.tgz -n coverity -f your-values.yaml --wait --timeout 25m
 ```
 
-The same values as the vendor's chart work unchanged; the new ones (`global.certificates`, and the two above) have
+The same values as the vendor's chart work unchanged; the new ones (`global.certificates`, and those named above) have
 working defaults. An upgrade from the vendor's chart of the same version takes over the existing certificates: Connect
 restarts once (about two minutes), the scan services roll without a gap.
