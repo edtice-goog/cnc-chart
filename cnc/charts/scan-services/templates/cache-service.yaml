@@ -56,7 +56,12 @@ spec:
       labels:
         {{- include "service.selectorLabels" . | nindent 8 }}
       annotations:
+        {{- /* connect-config is a hook, recreated at every upgrade, so its resourceVersion changes every time and this checksum
+             restarted the service at every helm upgrade. With global.certificates.mode set, the certificate keeper restarts
+             the service when the content changes instead. */}}
+        {{- if not (dig "certificates" "mode" "" (.Values.global | default dict)) }}
         checksum/connect-config: {{ include "scan-services.connectConfig.resourceVersion" . | sha256sum }}
+        {{- end }}
         {{- if (index .Values .serviceName).exposeMetrics }}
         prometheus.io/port: "8081"
         prometheus.io/scrape: "true"

@@ -247,6 +247,70 @@ global:
   gateway:
     hostnames: []
 
+  # The internal certificates: the CA and the seven certificates Connect and the scan services use to talk to each
+  # other over mutual TLS (Secrets <release>-ca-x509, -cim-x509, -cs-x509, -cache-service-x509, -storage-service-x509,
+  # -storage-proxy-service-x509, -scan-service-x509 and -admin-x509). They aren't the ingress certificate.
+  # See "Internal certificates" in the chart's README.md.
+  certificates:
+    # How they are made:
+    #   builtIn      (default) the chart issues them, renews each one renewBefore ahead of its end, and rotates the CA
+    #                with an overlap. Nothing to install.
+    #   certManager  cert-manager issues and renews them; the chart creates the Issuers and Certificates. Needs
+    #                cert-manager (cert-manager.io/v1) in the cluster.
+    #   external     you create the Secrets yourself (tls.crt, tls.key, ca.crt) before installing, and replace them
+    #                before they end. The chart checks them and restarts what uses them.
+    # In every mode a CronJob (<release>-certificates) restarts the services that read a changed certificate, and
+    # reports how long each certificate has left: in its log, and in the ConfigMap <release>-certificates-status.
+    mode: builtIn
+
+    # Lifetime of the service certificates (all but the CA), and how long before their end they are renewed.
+    # Go durations: 8760h is a year, 720h 30 days. cert-manager needs a duration of at least 1h.
+    duration: 8760h
+    renewBefore: 720h
+
+    ca:
+      # Lifetime of the CA, and how long before its end a rotation starts (builtIn and certManager). renewBefore
+      # must be longer than the service certificates' duration.
+      duration: 87600h
+      renewBefore: 17520h
+      # builtIn: set this to a new value to rotate the CA now, for example after its key leaked (removing it does
+      # nothing). The rotation has three steps, one per keeper run: trust both CAs, re-issue from the new one, drop
+      # the old one.
+      rotation: ""
+
+    privateKey:
+      # RSA key size of new keys: 2048, 3072 or 4096
+      size: 2048
+
+    # When the keeper runs (renewals, restarts, the report): a cron schedule, in timeZone (the cluster's default,
+    # usually UTC, when empty). A renewal restarts the services that use the certificate at that time, so this is your
+    # maintenance window. Connect (Recreate) is unavailable for about two minutes per restart; the scan services roll
+    # without a gap.
+    schedule: "17 3 * * *"
+    timeZone: ""
+
+    restarts:
+      # Wait while an analysis job runs: the restart moves to the next run...
+      waitForScans: true
+      # ...unless the certificates the running pods hold end within this.
+      forceBefore: 72h
+      # The label selector of the scan service's analysis jobs (the label its jobs carry in 2026.9.0 and 2026.9.1).
+      scanJobSelector: "scanfarm.coverity.com/type=scanfarm-job"
+
+    # The keeper's image: it needs bash, openssl, curl and GNU coreutils. Empty: the TLS sidecar's nginx image
+    # (cim.cimweb.tlsSidecar), so nothing new to pull. Otherwise a full reference, e.g. registry/nginx:1.30.4.
+    image: ""
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 500m
+        memory: 256Mi
+    nodeSelector: {}
+    # Empty: global.tolerations
+    tolerations: []
+
 
 # See https://kubernetes.io/docs/concepts/containers/images/#image-pull-policy.
 # This is set on each CNC pod to control its image pull policy.
