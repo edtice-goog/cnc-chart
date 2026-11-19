@@ -20,11 +20,15 @@ Everything else is the vendor's chart, unchanged.
 
 - `vendor`: the vendor's chart, one commit per published version, exactly as downloaded
   (`https://repo.blackduck.com/cloudnative/cnc-<version>.tgz`; the commit message gives its sha256).
-- `master`: the patched chart of the latest vendor version. `git diff vendor master -- cnc` is the whole change. It
-  only moves forward: each new version's line is merged into it, the earlier versions' history kept.
-- Tags: `vendor/cnc-<version>` on each vendor commit, and `patched/cnc-<version>` on our commits on top of it, one per
-  change, also for an installation still on an older version. One patch per change:
-  `git format-patch vendor/cnc-<version>..patched/cnc-<version> -- cnc`.
+- `cnc-<version>`: our commits on top of that vendor version (`vendor/cnc-<version>`), one per change, for an
+  installation on that version. `git format-patch vendor/cnc-<version>..cnc-<version> -- cnc` gives one patch per
+  change. A new change is a commit on each version's branch that needs it.
+- `master`: the latest version's branch, merged in. `git diff vendor master -- cnc` is the whole change.
+- Every branch only moves forward. A new vendor version: its commit on `vendor`, then `cnc-<new>` made from
+  `cnc-<old>` with `git rebase --onto vendor/cnc-<new> vendor/cnc-<old>`, then on a detached `cnc-<new>`,
+  `git merge -s ours master` pushed as `master`.
+- Tags: `vendor/cnc-<version>` on each vendor commit; `patched/cnc-<version>` where that version's patches were first
+  published.
 
 ## Installing
 
