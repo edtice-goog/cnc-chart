@@ -596,6 +596,12 @@ cim:
         proxy_read_timeout: "60s"
         proxy_send_timeout: "60s"
 
+        # Response buffering. "off" streams each response at the client's pace. With nginx's own default ("on") a
+        # download from a client slower than Connect fills up to 1 GB of buffer, nginx stops reading, Connect's
+        # write times out (server.tomcat.connection-timeout, 60 s) and the download ends at about 1.1 GB: large
+        # analysis kits on the Downloads page fail for most remote users.
+        proxy_buffering: "off"
+
     # the Connect license can be updated by a k8a job
     #   the license is from the secret named in licenseSecretName
     updateLicense:
