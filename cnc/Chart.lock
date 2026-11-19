@@ -10,9 +10,9 @@ dependencies:
   version: 27.0.10
 - name: scan-services
   repository: oci://us-docker.pkg.dev/coverity-cloud-sandbox-dev/coverity-helm-charts
-  version: 2026.9.0-5062945+2026.9
+  version: 2026.9.1-5209873+2026.9
 - name: triage-suggestion-service
   repository: oci://us-docker.pkg.dev/coverity-cloud-sandbox-dev/coverity-helm-charts
-  version: 2026.09.16175305
-digest: sha256:b30f09f3312660bbc56ec6195296a79c3150bd983b53f68b3793c472e7efc688
-generated: "2026-09-17T10:43:02.298778888Z"
+  version: 2026.11.09153710
+digest: sha256:43e696b159b4c636f64516aa3f60440728095be220323f538b9f8992053166f1
+generated: "2026-11-19T17:55:26.560919309Z"

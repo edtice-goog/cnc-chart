@@ -25,7 +25,7 @@ global:
   #   - If you want to use a different image tag for CNC and scan-services images, then:
   #     - set imageVersion to your CNC image tag
   #     - set scan-services.imageVersion to your scan-services image tag
-  imageVersion: "2026.9.0"
+  imageVersion: "2026.9.1"
 
   # The common suffix that appends to all Black Duck Software CNC and scan-services images tag.
   #   - If you want to use a different suffix for CNC and scan-services images, then:

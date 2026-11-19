@@ -1,8 +1,8 @@
 apiVersion: v2
-appVersion: 2026.9.0
+appVersion: 2026.9.1
 description: scan services
 keywords:
 - scan-services
 name: scan-services
 type: application
-version: 2026.9.0-5062945+2026.9
+version: 2026.9.1-5209873+2026.9

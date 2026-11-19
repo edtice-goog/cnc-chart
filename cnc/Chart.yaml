@@ -17,15 +17,15 @@ dependencies:
 - condition: scan-services.enabled
   name: scan-services
   repository: oci://repo.blackduck.com/cloudnative
-  version: 2026.9.0
+  version: 2026.9.1
 - condition: triage-suggestion-service.enabled
   name: triage-suggestion-service
   repository: oci://repo.blackduck.com/cloudnative
-  version: 2026.9.0
+  version: 2026.9.1
 description: Cloud Native Coverity
 keywords:
 - Coverity
 kubeVersion: '>= 1.31.0-0'
 name: cnc
 type: application
-version: 2026.9.0
+version: 2026.9.1

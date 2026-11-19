@@ -92,7 +92,7 @@ deployment:
       memory: 512Mi
   serviceAccount: triage-suggestion-service
   strategy: RollingUpdate
-  version: 2026.9.0
+  version: 2026.9.1
 externalRabbitmq:
   existingSecret: triage-suggestion-service-secrets
   existingSecretKey: rabbitmq-password
@@ -445,7 +445,7 @@ workerDeployment:
       memory: 2Gi
   serviceAccount: triage-suggestion-service
   strategy: RollingUpdate
-  version: 2026.9.0
+  version: 2026.9.1
 workerHpa:
   enabled: true
   maxReplicas: 20

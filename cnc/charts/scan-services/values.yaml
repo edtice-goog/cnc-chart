@@ -5,7 +5,7 @@ global:
   imagePullPolicy: IfNotPresent
   imagePullSecret: ""
   imageRegistry: "repo.blackduck.com/containers"
-  imageVersion: "2026.9.0"
+  imageVersion: "2026.9.1"
   imageTagSuffix: ""
   licenseSecretName: ""
   tolerations: []
@@ -371,6 +371,25 @@ common-infra:
   # when true, the cleanup job will also delete failed jobs and their associated secrets.
   # defaults to false to preserve existing behavior (failed pod logs are retained).
   cleanupFailedJobs: false
+
+  # concurrency policy for the cleanup cronjob. "Forbid" skips a scheduled run while the previous
+  # run is still going, so runs never compete for the same Jobs and Secrets. Allowed: Allow, Forbid, Replace.
+  cleanupConcurrencyPolicy: "Forbid"
+
+  # number of completed/failed Jobs the cleanup fetches per LIST call. Lower it if the cleanup
+  # container approaches its memory limit. Valid range: 1-1000.
+  cleanupPageSize: 100
+
+  # number of Jobs (and their Secrets) deleted in parallel per page. Valid range: 1-100.
+  cleanupDeleteConcurrency: 10
+
+  # maximum time a single cleanup run may take, in seconds. A run that exceeds it is stopped, so a hung
+  # run cannot block later scheduled runs under Forbid. Keep it well above the real run time.
+  cleanupActiveDeadlineSeconds: 1800
+
+  # a scheduled run that cannot start within this many seconds is skipped rather than counted as missed.
+  # Keeps the CronJob controller under its 100-missed-start limit.
+  cleanupStartingDeadlineSeconds: 600
 
   # The image name to use
   image: "common-infra"

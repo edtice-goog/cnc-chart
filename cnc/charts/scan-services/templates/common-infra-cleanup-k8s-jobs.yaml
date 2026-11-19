@@ -68,10 +68,14 @@ metadata:
     {{- include "chart.labels" . | nindent 4 }}
 spec:
   schedule: {{ (index .Values "common-infra").cleanupSchedule | quote }}
+  concurrencyPolicy: {{ (index .Values "common-infra").cleanupConcurrencyPolicy | default "Forbid" | quote }}
+  startingDeadlineSeconds: {{ (index .Values "common-infra").cleanupStartingDeadlineSeconds | default 600 }}
   successfulJobsHistoryLimit: 1
   failedJobsHistoryLimit: 1
   jobTemplate:
     spec:
+      activeDeadlineSeconds: {{ (index .Values "common-infra").cleanupActiveDeadlineSeconds | default 1800 }}
+      backoffLimit: 0
       template:
         metadata:
           labels:
@@ -131,6 +135,10 @@ spec:
                   value: "cleanup"
                 - name: CLEANUP_FAILED_JOBS
                   value: {{ (index .Values "common-infra").cleanupFailedJobs | toString | quote }}
+                - name: CLEANUP_PAGE_SIZE
+                  value: {{ (index .Values "common-infra").cleanupPageSize | default 100 | toString | quote }}
+                - name: CLEANUP_DELETE_CONCURRENCY
+                  value: {{ (index .Values "common-infra").cleanupDeleteConcurrency | default 10 | toString | quote }}
               command:
                 - /cnc-common-infra
               resources:
