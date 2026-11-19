@@ -237,6 +237,10 @@ true
     {{ printf "%s/%s:%s" (required "A valid image registry entry is required." (.Values.cim.cimweb.tlsSidecar.registry | default .Values.imageRegistry | default .Values.global.imageRegistry )) (required "A valid image name (.Values.cim.cimweb.tlsSidecar.image) entry is required." .Values.cim.cimweb.tlsSidecar.image ) .Values.cim.cimweb.tlsSidecar.version }}
 {{- end }}
 
+{{- define "tlsSidecar.image.pullPolicy" -}}
+{{ .Values.cim.cimweb.tlsSidecar.imagePullPolicy | default .Values.imagePullPolicy | default .Values.global.imagePullPolicy }}
+{{- end }}
+
 {{- define "tlsSidecar.common.volumeMounts" }}
 - name: nginx-cert
   mountPath: /app/cert

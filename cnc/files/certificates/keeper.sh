@@ -15,7 +15,8 @@
 #   external     the customer provides the Secrets; this script checks them, restarts and reports
 #
 # In every mode it restarts a Deployment when something its pods read only at startup has changed (their certificates
-# and trust bundle, the scan services' connect-config), and logs how long each certificate has left.
+# and trust bundle, the scan services' connect-config), and logs how long each certificate has left. With
+# NGINX_UPDATES it also restarts a Deployment whose TLS sidecar runs an older nginx than the sidecar's tag names now.
 #
 # Needs bash, openssl (1.1.1 or 3.x), curl, GNU date and coreutils; the chart runs it in the TLS sidecar's nginx image.
 # Talks to the Kubernetes API with the pod's service account; never prints a private key or the token.
@@ -35,6 +36,9 @@ CA_ROTATION=${CA_ROTATION:-}                   # change it to start a CA rotatio
 WAIT_FOR_SCANS=${WAIT_FOR_SCANS:-true}         # don't restart while an analysis job runs...
 FORCE_BEFORE=${FORCE_BEFORE:-72h}              # ...unless the running pods' certificates end sooner than this
 SCAN_JOB_SELECTOR=${SCAN_JOB_SELECTOR:-}       # label selector of the analysis jobs
+NGINX_UPDATES=${NGINX_UPDATES:-false}          # restart sidecars that run an older image than this pod's (same tag)
+POD_NAME=${POD_NAME:-$(hostname)}              # this pod, to read the image it was started with
+SIDECAR=${SIDECAR:-tls-sidecar}                # the chart's name for the TLS sidecar container
 BACKDATE=${BACKDATE:-60s}                      # notBefore this far in the past, for clock skew
 LOCK_WAIT=${LOCK_WAIT:-300}                    # seconds a hook waits for another run to finish
 POST_WAIT=${POST_WAIT:-600}                    # seconds the post hook waits for a Deployment's rollout to finish
@@ -554,9 +558,12 @@ rollout_done() { # deployment JSON: the latest generation is rolled out and avai
   [ "$want" = 0 ] && return 0
   [ "$(jnum "$st" updatedReplicas)" = "$want" ] && [ "$(jnum "$st" availableReplicas)" = "$want" ] && [ "$(jnum "$st" replicas)" = "$want" ]
 }
+dep_selector() { # deployment JSON -> its pods' label selector (a=b,c=d)
+  printf '%s' "$1" | sed -n 's/.*"selector":{"matchLabels":{\([^}]*\)}.*/\1/p' | sed 's/"\([^"]*\)":"\([^"]*\)"/\1=\2/g'
+}
 pods_started_after() { # deployment-JSON epoch: every live pod of it (not terminating, not finished) started after epoch
   local sel pod st n=0
-  sel=$(printf '%s' "$1" | sed -n 's/.*"selector":{"matchLabels":{\([^}]*\)}.*/\1/p' | sed 's/"\([^"]*\)":"\([^"]*\)"/\1=\2/g')
+  sel=$(dep_selector "$1")
   [ -n "$sel" ] || return 1
   kreq GET "/api/v1/namespaces/$NS/pods?labelSelector=$(urlenc "$sel")"
   [ "$CODE" = 200 ] || return 1
@@ -580,6 +587,7 @@ scans_running() { # the number of active analysis jobs; 1 when they can't be rea
 }
 
 declare -a PICKUP=()
+declare -A RESTARTED=()
 pickup() {
   local d inputs json want have changed na deadline running
   while IFS='|' read -r d inputs; do
@@ -622,7 +630,78 @@ pickup() {
       "$A" "$want" "$A" "$(iso "$na")" "$A" "$(iso "$NOW")" > "$WORK/p.json"
     OK=200 kok PATCH "/apis/apps/v1/namespaces/$NS/deployments/$d" "$WORK/p.json" application/merge-patch+json
     log "$d: restarted to pick up its new certificates (${WHY:-its rollout is not done})"
-    PICKUP+=("$d: restarted")
+    PICKUP+=("$d: restarted"); RESTARTED[$d]=1
+  done < "$CONF/consumers.txt"
+}
+
+# ------------------------------------------------------------------------------------ nginx updates (every mode)
+
+# The TLS sidecar follows a tag (cim.cimweb.tlsSidecar.version, "stable"), pulled with Always. This pod runs in the same
+# image and has just pulled what the tag names now: a consumer whose sidecar runs another image is restarted, at the same
+# moments and with the same wait for analysis jobs as a certificate restart. No deadline forces it: a run that finds
+# scans running leaves it to the next run.
+image_id() { # pod JSON, container name -> the imageID in that container's status (empty until it has one)
+  # Compared as a whole: the same image always gives the same imageID. The status's "image" isn't used: the runtime
+  # reports an image's first tag there, which can be another name for the same image.
+  printf '%s' "$1" | sed 's/{"name":"/\n&/g' | { grep "^{\"name\":\"$2\"," || true; } \
+    | { grep -o '"imageID":"[^"]*"' || true; } | sed -n 's/^"imageID":"\(.*\)"$/\1/p' | sed -n 1p
+}
+MY_ID=""; MY_START=0
+my_image() { # this pod's image (its container's imageID) and start time
+  local pod
+  kreq GET "/api/v1/namespaces/$NS/pods?fieldSelector=$(urlenc "metadata.name=$POD_NAME")"
+  [ "$CODE" = 200 ] || return 0
+  pod=$(items "$BODY" | sed -n 1p)
+  MY_ID=$(image_id "$pod" keeper)
+  MY_START=$(jstr "$pod" startTime); if [ -n "$MY_START" ]; then MY_START=$(epoch "$MY_START"); else MY_START=0; fi
+}
+old_sidecar() { # deployment JSON -> "pod imageID" of a live pod, started before this one, whose sidecar runs another
+                # image; empty when all are current, "?" when the pods can't be read
+  local sel pod id st
+  sel=$(dep_selector "$1")
+  [ -n "$sel" ] || { echo "?"; return; }
+  kreq GET "/api/v1/namespaces/$NS/pods?labelSelector=$(urlenc "$sel")"
+  [ "$CODE" = 200 ] || { echo "?"; return; }
+  while IFS= read -r pod; do
+    [[ $pod == *'"deletionTimestamp"'* ]] && continue
+    case $(jstr "$pod" phase) in Succeeded|Failed) continue ;; esac
+    # a pod started after this one pulled the tag at least as recently: it isn't older
+    st=$(jstr "$pod" startTime)
+    if [ -n "$st" ] && [ "$(epoch "$st")" -ge "$MY_START" ]; then continue; fi
+    id=$(image_id "$pod" "$SIDECAR")
+    if [ -n "$id" ] && [ "$id" != "$MY_ID" ]; then printf '%s %s\n' "$(podname "$pod")" "$id"; return; fi
+  done < <(items "$BODY")
+}
+nginx_pickup() {
+  local d inputs json old running
+  [ "$NGINX_UPDATES" = true ] || return 0
+  my_image
+  if [ -z "$MY_ID" ] || [ "$MY_START" = 0 ]; then
+    warn "can't read this pod's own image: the sidecars' nginx isn't checked"; return 0
+  fi
+  log "nginx: the sidecar's tag is $MY_ID now"
+  while IFS='|' read -r d inputs; do
+    [[ -z $d || $d == \#* ]] && continue
+    [ -n "${RESTARTED[$d]:-}" ] && continue                 # restarted for its certificates: it pulls the tag anyway
+    kreq GET "/apis/apps/v1/namespaces/$NS/deployments/$d"
+    [ "$CODE" = 404 ] && continue
+    [ "$CODE" = 200 ] || { warn "$d: can't read it (HTTP $CODE)"; continue; }
+    json=$BODY
+    old=$(old_sidecar "$json")
+    [ -n "$old" ] || continue
+    if [ "$old" = "?" ]; then warn "$d: can't read its pods: its nginx isn't checked"; continue; fi
+    if ! rollout_done "$json"; then
+      log "$d: still rolling out; its nginx is checked at the next run"; PICKUP+=("$d: rolling out (nginx)"); continue
+    fi
+    running=0; [ "$WAIT_FOR_SCANS" = true ] && running=$(scans_running)
+    if [ "$running" -gt 0 ]; then
+      log "$d: nginx restart deferred while $running analysis job(s) run"
+      PICKUP+=("$d: nginx restart deferred ($running scan(s) running)"); continue
+    fi
+    printf '{"spec":{"template":{"metadata":{"annotations":{"%s/restarted-at":"%s"}}}}}' "$A" "$(iso "$NOW")" > "$WORK/p.json"
+    OK=200 kok PATCH "/apis/apps/v1/namespaces/$NS/deployments/$d" "$WORK/p.json" application/merge-patch+json
+    log "$d: restarted for the current nginx (${old%% *} ran ${old#* })"
+    PICKUP+=("$d: restarted for a newer nginx"); RESTARTED[$d]=1
   done < "$CONF/consumers.txt"
 }
 
@@ -683,6 +762,6 @@ case $MODE in
 esac
 # A pre hook runs before the upgrade applies the new Deployments, which restart what they change themselves; the post
 # hook and the CronJob restart the rest.
-[ "$RUN" = pre ] || pickup
+[ "$RUN" = pre ] || { pickup; nginx_pickup; }
 report
 log "done: ${#CHANGED[@]} Secret(s) written, $WARNINGS warning(s)"
