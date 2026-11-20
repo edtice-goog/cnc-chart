@@ -457,8 +457,13 @@ spec:
             {{- toYaml .Values.global.extraVolumeMounts | nindent 12 }}
             {{- end }}
           livenessProbe:
-            exec:
-              command: ["/grpc_health_probe", "-addr=localhost:9999", "-tls","-tls-ca-cert=/opt/auth/ca.crt","-tls-client-cert=/opt/auth/tls.crt","-tls-client-key=/opt/auth/tls.key",-tls-server-name={{ include "scan-services.fullname" . }}-{{ .serviceName }} ,"-connect-timeout=250s", "-rpc-timeout=100m"]
+            {{- /* The 2026.9.1 storage-service image's /grpc_health_probe is a 92-byte HTML error page ("504 Gateway
+                   Time-out"), not the program, so the vendor's exec probe always failed ("exec format error") and the
+                   pod was restarted every ~9 minutes. A TCP check on the gRPC port instead, with the same timings; the
+                   kubelet's own grpc probe can't speak the service's mTLS. Back to the exec probe once an image ships
+                   the program again. */}}
+            tcpSocket:
+              port: 9999
             initialDelaySeconds: {{ (index .Values .serviceName).livenessProbe.initialDelaySeconds}}
             periodSeconds: {{ (index .Values .serviceName).livenessProbe.periodSeconds}}
             timeoutSeconds: {{ (index .Values .serviceName).livenessProbe.timeoutSeconds }}
