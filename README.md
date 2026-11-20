@@ -1,7 +1,7 @@
 # Cloud Native Coverity Helm chart, with renewing internal certificates
 
-Black Duck's Cloud Native Coverity chart (`cnc`) as published, with four changes on top, until the product ships them
-itself:
+Black Duck's Cloud Native Coverity chart (`cnc`) as published, with four changes on top (five on 2026.9.1), until the
+product ships them itself:
 
 1. **The internal certificates renew.** Charts up to 2026.9.1 made the eight mTLS certificates between Connect and the
    scan services once, valid 365 days, and never renewed them: a year after the install scans failed (COVERITY-588).
@@ -16,6 +16,10 @@ itself:
 4. **nginx isn't pinned.** The TLS sidecar (and the certificate keeper, which runs in its image) follows nginx's
    `stable` tag, pulled with `Always`, and the keeper restarts the sidecar when a newer nginx is out. The vendor's chart
    pins a patch release (1.30.4) that only a new chart can change. See `cnc/CERTIFICATES.md`, "nginx updates".
+5. **2026.9.1 only: the storage service stays up.** Its image ships `/grpc_health_probe` as a 92-byte HTML page
+   ("504 Gateway Time-out") instead of the program, so the liveness probe always failed and the pod was restarted
+   about every 9 minutes. Its liveness probe is a TCP check on the gRPC port (9999) instead, with the same timings.
+   It goes once an image ships the program again.
 
 Everything else is the vendor's chart, unchanged.
 
